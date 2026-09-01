@@ -101,7 +101,7 @@
 <div class="popup-wrap" id="popups"></div>
 <div class="app">
   <header>
-    <h1>Live Translator <small>v17</small></h1>
+    <h1>Live Translator <small>v18</small></h1>
     <div class="right">
       <button class="theme" id="themeBtn">🌙</button>
       <div class="status" id="status">Ready</div>
@@ -158,9 +158,11 @@
 
   <div class="box" id="camBox" style="display:none">
     <div class="label">Camera translate — point at Japanese text</div>
-    <video id="camVideo" autoplay playsinline muted style="width:100%;border-radius:10px;background:#000"></video>
-    <div class="text" id="camOut" style="min-height:2em"></div>
-    <div class="romaji" id="camRomaji"></div>
+    <div id="camWrap" style="position:relative;width:100%;border-radius:10px;overflow:hidden;background:#000">
+      <video id="camVideo" autoplay playsinline muted style="width:100%;display:block"></video>
+      <div id="camOverlay" style="position:absolute;inset:0;pointer-events:none"></div>
+    </div>
+    <div class="hint" id="camStatus" style="text-align:start"></div>
     <div class="controls" style="margin-top:6px"><button class="side" id="camStop">✖ Stop camera</button></div>
   </div>
 
@@ -576,30 +578,30 @@ function addSuggestionSet(replies, forText, dir){
   repliesList.scrollTop=0;
 }
 
-/* ---------- CAMERA ---------- */
-const camBox=$("camBox"),camVideo=$("camVideo"),camOut=$("camOut"),camRomajiEl=$("camRomaji");
-let camStream=null,camTimer=null,camBusy=false,lastCamText="",camScanCount=0;
+/* ---------- CAMERA (lens-style overlay, JA -> EN) ---------- */
+const camBox=$("camBox"),camVideo=$("camVideo"),camOverlay=$("camOverlay"),camStatus=$("camStatus");
+let camStream=null,camTimer=null,camBusy=false,camScanCount=0;
 $("camBtn").onclick=async()=>{
   clearErr();
   if(!keyCheck())return;
-  if(listening){listeningStoppedManually=true;try{rec&&rec.stop();}catch(e){}stopUI();}
   try{camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"},audio:false});}
   catch(e){showErr("Camera permission denied or unavailable.");return;}
   camVideo.srcObject=camStream;
   camBox.style.display="";
-  camOut.textContent="Point the camera at Japanese text…";camOut.classList.add("placeholder");
+  camOverlay.innerHTML="";
   camScanCount=0;
-  camTimer=setInterval(captureAndTranslate,3000);
+  camStatus.textContent="Point at Japanese text — translations will appear over it.";
+  camTimer=setInterval(camScan,2500);
 };
 $("camStop").onclick=()=>{
   clearInterval(camTimer);camTimer=null;
   if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;}
-  camBox.style.display="none";lastCamText="";
+  camBox.style.display="none";camOverlay.innerHTML="";
 };
-async function captureAndTranslate(){
+async function camScan(){
   if(camBusy||!camStream)return;
   camBusy=true;camScanCount++;
-  if(camOut.classList.contains("placeholder"))camOut.textContent="Scanning… ("+camScanCount+")";
+  camStatus.textContent="Scanning… ("+camScanCount+")";
   try{
     const c=document.createElement("canvas");
     const w=camVideo.videoWidth,h=camVideo.videoHeight;
@@ -610,21 +612,30 @@ async function captureAndTranslate(){
     const b64=c.toDataURL("image/jpeg",0.7).split(",")[1];
     const r=await fetch("https://api.openai.com/v1/chat/completions",{
       method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+$("oaiKey").value.trim()},
-      body:JSON.stringify({model:"gpt-4o-mini",max_tokens:600,messages:[{role:"user",content:[
+      body:JSON.stringify({model:"gpt-4o-mini",max_tokens:900,messages:[{role:"user",content:[
         {type:"image_url",image_url:{url:"data:image/jpeg;base64,"+b64}},
-        {type:"text",text:'Extract any Japanese text visible in this image and translate it to English. Respond ONLY with valid JSON, no markdown fences: {"ja":"the Japanese text found (empty if none)","romaji":"its romaji","en":"English translation"}.'}]}]})
+        {type:"text",text:'Find every distinct block of Japanese text in this image and translate each to English. For each block give its position as fractions of the image (x,y = top-left corner, w,h = size, all between 0 and 1). Respond ONLY with valid JSON, no fences: {"blocks":[{"en":"English translation","x":0.1,"y":0.2,"w":0.3,"h":0.05}]}. If there is no Japanese text: {"blocks":[]}'}]}]})
     });
-    if(!r.ok){const t=await r.text().catch(()=>"");camOut.classList.remove("placeholder");camOut.textContent="Camera error: API "+r.status+(t?" — "+t.slice(0,120):"");camBusy=false;return;}
+    if(!r.ok){const t=await r.text().catch(()=>"");camStatus.textContent="Camera error: API "+r.status+(t?" — "+t.slice(0,100):"");camBusy=false;return;}
     const data=await r.json();
     let raw=(data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content||"").trim().replace(/```json|```/g,"").trim();
-    let obj;try{obj=JSON.parse(raw);}catch(e){camOut.classList.remove("placeholder");camOut.textContent=raw?raw.slice(0,300):"Could not read a response — try again.";camBusy=false;return;}
-    if(obj.en&&obj.ja!==lastCamText){
-      lastCamText=obj.ja;
-      camOut.classList.remove("placeholder");
-      camOut.textContent=obj.en;
-      camRomajiEl.textContent=obj.ja+(obj.romaji?"  ·  "+obj.romaji:"");
-    }else if(!obj.en&&!lastCamText){camOut.textContent="No Japanese text detected yet… ("+camScanCount+")";}
-  }catch(e){camOut.classList.remove("placeholder");camOut.textContent="Camera error: "+(e.message||"unknown");}
+    let obj;try{obj=JSON.parse(raw);}catch(e){camStatus.textContent="Read error — retrying…";camBusy=false;return;}
+    const blocks=Array.isArray(obj.blocks)?obj.blocks:[];
+    camOverlay.innerHTML="";
+    for(const b of blocks){
+      if(!b.en)continue;
+      const d=document.createElement("div");
+      const x=Math.max(0,Math.min(1,+b.x||0))*100, y=Math.max(0,Math.min(1,+b.y||0))*100;
+      const bw=Math.max(0.05,Math.min(1,+b.w||0.3))*100, bh=Math.max(0.03,Math.min(1,+b.h||0.06))*100;
+      d.style.cssText="position:absolute;left:"+x+"%;top:"+y+"%;width:"+bw+"%;min-height:"+bh+"%;"
+        +"background:rgba(10,12,20,.82);color:#fff;border-radius:6px;padding:2px 6px;"
+        +"display:flex;align-items:center;justify-content:center;text-align:center;"
+        +"font-weight:700;line-height:1.2;font-size:clamp(10px,"+Math.max(2.2,bh*0.55)+"vw,22px);overflow:hidden";
+      d.textContent=b.en;
+      camOverlay.appendChild(d);
+    }
+    camStatus.textContent=blocks.length?blocks.length+" text block(s) translated":"No Japanese text detected ("+camScanCount+")";
+  }catch(e){camStatus.textContent="Camera error: "+(e.message||"unknown");}
   camBusy=false;
 }
 
