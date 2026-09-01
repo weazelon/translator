@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="he">
+<html lang="en">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -9,119 +9,82 @@
 <title>Live Translator</title>
 <style>
   :root{
-    --ink:#1c2230;
-    --paper:#eef1f6;
-    --panel:#ffffff;
-    --accent:#2456d6;
-    --accent-soft:#dbe5fb;
-    --live:#d6244e;
-    --ok:#1a8a5c;
-    --line:#c7cedd;
-    --muted:#5a6172;
+    --ink:#1c2230; --paper:#eef1f6; --panel:#ffffff;
+    --accent:#2456d6; --accent-soft:#dbe5fb;
+    --live:#d6244e; --ok:#1a8a5c; --line:#c7cedd; --muted:#5a6172;
     --reply-bg:#fafbfe;
-    --err-bg:#fdecef;--err-line:#f3b8c6;--err-ink:#8f1735;
+    --err-bg:#fdecef; --err-line:#f3b8c6; --err-ink:#8f1735;
   }
   body.dark{
-    --ink:#e8ebf4;
-    --paper:#12151d;
-    --panel:#1c2130;
-    --accent:#6f96ff;
-    --accent-soft:#26304a;
-    --live:#ff5c82;
-    --ok:#4cd396;
-    --line:#333b52;
-    --muted:#9aa2b8;
+    --ink:#e8ebf4; --paper:#12151d; --panel:#1c2130;
+    --accent:#6f96ff; --accent-soft:#26304a;
+    --live:#ff5c82; --ok:#4cd396; --line:#333b52; --muted:#9aa2b8;
     --reply-bg:#171c29;
-    --err-bg:#3a1620;--err-line:#6d2436;--err-ink:#ffb3c2;
+    --err-bg:#3a1620; --err-line:#6d2436; --err-ink:#ffb3c2;
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  body{
-    font-family:"Segoe UI","Heebo","Hiragino Sans",Arial,sans-serif;
-    background:var(--paper);
-    color:var(--ink);
-    min-height:100vh;transition:background .2s,color .2s;
-    display:flex;flex-direction:column;align-items:center;
-    padding:16px;
-  }
-  .app{width:100%;max-width:560px;display:flex;flex-direction:column;gap:14px}
-  header{display:flex;align-items:baseline;justify-content:space-between}
-  header h1{font-size:1.35rem;font-weight:800;letter-spacing:-.02em}
-  header .status{font-size:.85rem;color:var(--muted)}
-  header .status.live{color:var(--live);font-weight:700}
+  body{font-family:"Segoe UI","Heebo","Hiragino Sans",Arial,sans-serif;background:var(--paper);color:var(--ink);
+    min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:12px;transition:background .2s,color .2s}
+  .app{width:100%;max-width:560px;display:flex;flex-direction:column;gap:12px}
+  header{display:flex;align-items:center;justify-content:space-between}
+  header h1{font-size:1.25rem;font-weight:800}
+  header h1 small{font-size:.65rem;color:var(--muted);font-weight:600}
+  header .right{display:flex;gap:8px;align-items:center}
+  .status{font-size:.82rem;color:var(--muted)}
+  .status.live{color:var(--live);font-weight:700}
+  .theme{border:1.5px solid var(--line);background:var(--panel);border-radius:10px;width:36px;height:36px;font-size:1rem;cursor:pointer}
 
-  .pair{
-    background:var(--panel);border:1px solid var(--line);border-radius:14px;
-    padding:14px;display:flex;align-items:center;gap:10px;justify-content:center;
-  }
-  select{
-    font-size:1.05rem;font-weight:700;padding:10px 12px;border-radius:10px;
-    border:1.5px solid var(--line);background:var(--panel);color:var(--ink);
-  }
-  .swap{
-    border:none;background:var(--accent-soft);color:var(--accent);
-    width:44px;height:44px;border-radius:50%;font-size:1.2rem;cursor:pointer;
-  }
-  .swap:active{transform:rotate(180deg)}
+  .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:6px}
+  .label{font-size:.78rem;color:var(--muted);font-weight:700}
+  .text{font-size:1.15rem;line-height:1.45;word-break:break-word}
+  .text.placeholder{color:var(--muted);opacity:.7}
+  .romaji{font-size:.95rem;color:var(--muted);font-style:italic;direction:ltr;text-align:left}
 
-  .box{
-    background:var(--panel);border:1px solid var(--line);border-radius:14px;
-    padding:14px;min-height:110px;display:flex;flex-direction:column;gap:6px;
-  }
-  .box .label{font-size:.8rem;color:var(--muted);font-weight:700}
-  .box .text{font-size:1.25rem;line-height:1.5;flex:1;word-break:break-word}
-  .box .text.placeholder{color:var(--muted);opacity:.7}
-  #outBox{border-color:var(--accent);border-width:2px}
-  #outBox .label{color:var(--accent)}
-
-  .controls{display:flex;gap:10px;align-items:center;justify-content:center}
-  .mic{
-    flex:1;max-width:220px;height:76px;border-radius:20px;border:none;cursor:pointer;
-    background:var(--accent);color:#fff;
-    box-shadow:0 6px 18px rgba(36,86,214,.35);
-    transition:background .15s;
-    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
-  }
-  .mic .micIcon{font-size:1.5rem}
-  .mic .micLbl{font-size:.85rem;font-weight:800;letter-spacing:.02em}
-  .mic-b{background:#7a3fd4;box-shadow:0 6px 18px rgba(122,63,212,.35)}
-  .mic.listening{background:var(--live);box-shadow:0 0 0 0 rgba(214,36,78,.5);animation:pulse 1.4s infinite}
-  @keyframes pulse{
-    0%{box-shadow:0 0 0 0 rgba(214,36,78,.45)}
-    70%{box-shadow:0 0 0 22px rgba(214,36,78,0)}
-    100%{box-shadow:0 0 0 0 rgba(214,36,78,0)}
-  }
-  .side{
-    border:1.5px solid var(--line);background:var(--panel);border-radius:12px;
-    padding:10px 14px;cursor:pointer;font-size:.9rem;font-weight:700;color:var(--ink);
-  }
-  .side.on{border-color:var(--ok);color:var(--ok)}
-
-  .romaji{font-size:1rem;color:var(--muted);font-style:italic;direction:ltr;text-align:left}
-  .reply{
-    border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:8px;
-    cursor:pointer;background:var(--reply-bg);
-  }
-  .reply:hover{border-color:var(--accent)}
-  .reply .ja{font-size:1.1rem;font-weight:700}
-  .reply .ro{font-size:.92rem;color:var(--muted);font-style:italic}
-  .reply .mean{font-size:.92rem;color:var(--ok)}
-  .turn{border-inline-start:3px solid var(--line);padding:6px 10px;margin-top:8px}
+  /* history scrolls INSIDE its own frame */
+  #histBox{max-height:38vh}
+  #histList{overflow-y:auto;flex:1;min-height:0;padding-inline-end:4px}
+  .turn{border-inline-start:3px solid var(--line);padding:6px 10px;margin-bottom:8px}
   .turn.a{border-color:var(--accent)}
   .turn.b{border-color:#7a3fd4}
-  .turn .src{font-size:.95rem;color:var(--muted)}
-  .turn .dst{font-size:1.1rem;font-weight:600}
-  .turn .ro{font-size:.9rem;color:var(--muted);font-style:italic}
-  .hint{text-align:center;font-size:.85rem;color:var(--muted)}
-  .err{
-    display:none;background:var(--err-bg);border:1px solid var(--err-line);color:var(--err-ink);
-    border-radius:12px;padding:10px 14px;font-size:.9rem;
-  }
+  .turn .src{font-size:.9rem;color:var(--muted)}
+  .turn .dst{font-size:1.08rem;font-weight:600}
+  .turn .ro{font-size:.88rem;color:var(--muted);font-style:italic}
+
+  #outBox{border-color:var(--accent);border-width:2px}
+  #outBox .label{color:var(--accent)}
+  #inBox{max-height:16vh}
+  #inText{overflow-y:auto}
+
+  .pair{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px;display:flex;align-items:center;gap:8px;justify-content:center}
+  select{font-size:1rem;font-weight:700;padding:8px 10px;border-radius:10px;border:1.5px solid var(--line);background:var(--panel);color:var(--ink)}
+  .swap{border:none;background:var(--accent-soft);color:var(--accent);width:40px;height:40px;border-radius:50%;font-size:1.1rem;cursor:pointer}
+
+  .controls{display:flex;gap:8px;align-items:stretch;justify-content:center;flex-wrap:wrap}
+  .mic{flex:1;max-width:220px;min-width:140px;height:68px;border-radius:18px;border:none;cursor:pointer;background:var(--accent);color:#fff;
+    box-shadow:0 5px 14px rgba(36,86,214,.35);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+  .mic .micIcon{font-size:1.3rem}
+  .mic .micLbl{font-size:.82rem;font-weight:800}
+  .mic-b{background:#7a3fd4;box-shadow:0 5px 14px rgba(122,63,212,.35)}
+  .mic.listening{background:var(--live);animation:pulse 1.4s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(214,36,78,.45)}70%{box-shadow:0 0 0 18px rgba(214,36,78,0)}100%{box-shadow:0 0 0 0 rgba(214,36,78,0)}}
+  .side{border:1.5px solid var(--line);background:var(--panel);border-radius:12px;padding:9px 12px;cursor:pointer;font-size:.85rem;font-weight:700;color:var(--ink)}
+  .side.on{border-color:var(--ok);color:var(--ok)}
+
+  .reply{border:1px solid var(--line);border-radius:10px;padding:9px 11px;margin-top:8px;cursor:pointer;background:var(--reply-bg)}
+  .reply:hover{border-color:var(--accent)}
+  .reply .ja{font-size:1.05rem;font-weight:700}
+  .reply .ro{font-size:.9rem;color:var(--muted);font-style:italic}
+  .reply .mean{font-size:.9rem;color:var(--ok)}
+
+  .hint{text-align:center;font-size:.8rem;color:var(--muted)}
+  .err{display:none;background:var(--err-bg);border:1px solid var(--err-line);color:var(--err-ink);border-radius:12px;padding:10px 12px;font-size:.88rem}
   .err.show{display:block}
-  .popup-wrap{position:fixed;top:12px;left:12px;right:12px;z-index:999;display:flex;flex-direction:column;gap:8px;pointer-events:none}
-  .popup{pointer-events:auto;border-radius:12px;padding:12px 14px;font-size:.92rem;line-height:1.45;
-    box-shadow:0 8px 24px rgba(0,0,0,.45);display:flex;gap:10px;align-items:flex-start;animation:pin .2s}
+
+  .popup-wrap{position:fixed;top:10px;left:10px;right:10px;z-index:999;display:flex;flex-direction:column;gap:8px;pointer-events:none}
+  .popup{pointer-events:auto;border-radius:12px;padding:11px 13px;font-size:.9rem;line-height:1.4;box-shadow:0 8px 24px rgba(0,0,0,.45);
+    display:flex;gap:10px;align-items:flex-start;animation:pin .2s}
   @keyframes pin{from{transform:translateY(-8px);opacity:0}to{transform:none;opacity:1}}
-  .popup .tag{font-weight:800;font-size:.75rem;padding:2px 8px;border-radius:8px;white-space:nowrap}
+  .popup .tag{font-weight:800;font-size:.72rem;padding:2px 8px;border-radius:8px;white-space:nowrap}
   .popup.app{background:#3a1620;border:1px solid #6d2436;color:#ffb3c2}
   .popup.app .tag{background:#6d2436;color:#fff}
   .popup.api{background:#3a2a10;border:1px solid #6d5324;color:#ffd9a0}
@@ -129,19 +92,22 @@
   .popup.net{background:#10283a;border:1px solid #24506d;color:#a0d4ff}
   .popup.net .tag{background:#24506d;color:#fff}
   .popup .x{margin-inline-start:auto;background:none;border:none;color:inherit;font-size:1rem;cursor:pointer}
-  .theme{border:1.5px solid var(--line);background:var(--panel);border-radius:10px;width:38px;height:38px;font-size:1.05rem;cursor:pointer}
 </style>
 </head>
 <body>
 <div class="popup-wrap" id="popups"></div>
 <div class="app">
   <header>
-    <h1>Live Translator <span style="font-size:.7rem;color:var(--muted)">v8</span></h1>
-    <div style="display:flex;gap:10px;align-items:center"><button class="theme" id="themeBtn" title="Theme">🌙</button><div class="status" id="status">Ready</div></div>
+    <h1>Live Translator <small>v9</small></h1>
+    <div class="right">
+      <button class="theme" id="themeBtn">🌙</button>
+      <div class="status" id="status">Ready</div>
+    </div>
   </header>
 
+  <!-- RESULTS ON TOP -->
   <div class="box" id="histBox" style="display:none">
-    <div class="label">Conversation</div>
+    <div class="label">Conversation (newest first)</div>
     <div id="histList"></div>
   </div>
 
@@ -151,34 +117,29 @@
     <div class="romaji" id="outRomaji"></div>
   </div>
 
-  <div class="box" id="inBox">
-    <div class="label" id="inLabel">Heard</div>
-    <div class="text placeholder" id="inText">Tap the mic and speak…</div>
+  <div class="box" id="repliesBox" style="display:none">
+    <div class="label">Suggested replies</div>
+    <div id="repliesList"></div>
   </div>
 
+  <div class="box" id="inBox">
+    <div class="label">Heard</div>
+    <div class="text placeholder" id="inText">Tap a mic and speak…</div>
+  </div>
+
+  <!-- CONTROLS BELOW -->
   <div class="pair">
     <select id="srcLang">
       <option value="en" selected>English</option>
       <option value="ja">日本語 Japanese</option>
       <option value="he">עברית Hebrew</option>
     </select>
-    <button class="swap" id="swapBtn" title="Swap">⇄</button>
+    <button class="swap" id="swapBtn">⇄</button>
     <select id="dstLang">
       <option value="en">English</option>
       <option value="ja" selected>日本語 Japanese</option>
       <option value="he">עברית Hebrew</option>
     </select>
-  </div>
-
-  
-
-  
-
-  
-
-  <div class="box" id="repliesBox" style="display:none">
-    <div class="label">Suggested replies</div>
-    <div id="repliesList"></div>
   </div>
 
   <div class="controls">
@@ -197,139 +158,130 @@
     <video id="camVideo" autoplay playsinline muted style="width:100%;border-radius:10px;background:#000"></video>
     <div class="text" id="camOut" style="min-height:2em"></div>
     <div class="romaji" id="camRomaji"></div>
-    <div class="controls" style="margin-top:6px">
-      <button class="side" id="camStop">✖ Stop camera</button>
-    </div>
+    <div class="controls" style="margin-top:6px"><button class="side" id="camStop">✖ Stop camera</button></div>
   </div>
 
-  <div class="hint" id="hint">Works best in Chrome / Android Chrome. Speech recognition needs mic permission.</div>
+  <div class="err" id="err"></div>
 
   <details class="box" style="min-height:0">
     <summary class="label" style="cursor:pointer">⚙️ Settings — OpenAI API key</summary>
     <input type="password" id="oaiKey" placeholder="OpenAI API key: sk-..." style="margin-top:8px;padding:10px;border-radius:10px;border:1.5px solid var(--line);background:var(--panel);color:var(--ink);font-size:.95rem;width:100%">
-    <div class="hint" style="text-align:start;margin-top:6px">Only needed when this page is hosted outside the Claude app (e.g. GitHub Pages). The key stays in this browser tab only.</div>
+    <div class="hint" style="text-align:start;margin-top:6px">Stored on this device only.</div>
   </details>
-  <div class="err" id="err"></div>
+
+  <div class="hint">Works best in Chrome / Android Chrome.</div>
 </div>
 
 <script>
-const LANG = {
-  en:{name:"English", bcp:"en-US", label:"English"},
-  ja:{name:"Japanese", bcp:"ja-JP", label:"日本語"},
-  he:{name:"Hebrew", bcp:"he-IL", label:"עברית"}
-};
+const LANG={en:{name:"English",bcp:"en-US",label:"English"},ja:{name:"Japanese",bcp:"ja-JP",label:"日本語"},he:{name:"Hebrew",bcp:"he-IL",label:"עברית"}};
+const $=id=>document.getElementById(id);
+const srcSel=$("srcLang"),dstSel=$("dstLang"),micBtn=$("micBtn"),micBtnB=$("micBtnB"),
+      inText=$("inText"),outText=$("outText"),outRomaji=$("outRomaji"),statusEl=$("status"),errEl=$("err"),
+      autoSpeakBtn=$("autoSpeak"),convoBtn=$("convoBtn"),simulBtn=$("simulBtn"),
+      histBox=$("histBox"),histList=$("histList"),repliesBox=$("repliesBox"),repliesList=$("repliesList");
 
-const $ = id => document.getElementById(id);
-const srcSel=$("srcLang"), dstSel=$("dstLang"), micBtn=$("micBtn"),
-      inText=$("inText"), outText=$("outText"), statusEl=$("status"),
-      errEl=$("err"), autoSpeakBtn=$("autoSpeak"), contBtn=$("contMode");
+let listening=false,autoSpeak=true,rec=null;
+let convoMode=false,turnTimer=null;
+let activeSrc="en",activeDst="ja",activeBtn=null;
+let translatedSoFar="",pendingQueue=[],translating=false,sessionSourceText="",extrasTimer=null;
+let translationFailed=false,displayDirty=false,lastTurnEl=null,listeningStoppedManually=false;
 
-let listening=false, autoSpeak=true, continuous=false, rec=null, busy=false;
-let convoMode=false;
-let turnTimer=null;
-let translationFailed=false;
-let activeSrc="en", activeDst="ja";
-
+/* ---------- errors ---------- */
+function escapeHtml(x){return String(x).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 function classifyError(msg){
   const m=String(msg).toLowerCase();
-  // OpenAI-side problems (their server answered with an error)
-  if(m.includes("api 401")||m.includes("invalid_api_key")||m.includes("incorrect api key"))
-    return {kind:"api",tag:"OPENAI",text:"Invalid or missing API key. Check the key in ⚙️ Settings (should start with sk-)."};
-  if(m.includes("api 429")||m.includes("insufficient_quota")||m.includes("exceeded your current quota"))
-    return {kind:"api",tag:"OPENAI",text:"Out of credit or rate-limited. Check billing at platform.openai.com."};
-  if(m.includes("api 5")&&(m.includes("api 50")||m.includes("api 52")||m.includes("api 53")))
-    return {kind:"api",tag:"OPENAI",text:"OpenAI servers are having trouble. Not your fault — wait a minute and retry."};
-  if(m.includes("api "))
-    return {kind:"api",tag:"OPENAI",text:"OpenAI returned an error: "+msg};
-  // network problems (request never got an answer)
-  if(m.includes("failed to fetch")||m.includes("networkerror")||m.includes("load failed")||m.includes("network error"))
-    return {kind:"net",tag:"NETWORK",text:"No connection to the server. Check internet / try switching WiFi–mobile data."};
-  // device/browser problems
-  if(m.includes("mic permission")||m.includes("not-allowed"))
-    return {kind:"app",tag:"DEVICE",text:"Microphone blocked. Allow mic access for this site in Chrome settings."};
-  if(m.includes("camera"))
-    return {kind:"app",tag:"DEVICE",text:msg};
-  if(m.includes("speech recognition network"))
-    return {kind:"app",tag:"BROWSER",text:"Chrome speech service unreachable. Use real Google Chrome with internet."};
-  // everything else = app bug
-  return {kind:"app",tag:"APP BUG",text:msg+" — screenshot this and send it to Claude."};
+  if(m.includes("api 401")||m.includes("invalid_api_key")||m.includes("incorrect api key"))return{kind:"api",tag:"OPENAI",text:"Invalid API key. Check ⚙️ Settings."};
+  if(m.includes("api 429")||m.includes("insufficient_quota")||m.includes("quota"))return{kind:"api",tag:"OPENAI",text:"Out of credit or rate-limited. Check billing at platform.openai.com."};
+  if(m.includes("api 50")||m.includes("api 52")||m.includes("api 53"))return{kind:"api",tag:"OPENAI",text:"OpenAI servers are struggling — retry in a minute."};
+  if(m.includes("api "))return{kind:"api",tag:"OPENAI",text:"OpenAI error: "+msg};
+  if(m.includes("failed to fetch")||m.includes("networkerror")||m.includes("load failed"))return{kind:"net",tag:"NETWORK",text:"No connection — check internet."};
+  if(m.includes("mic permission")||m.includes("not-allowed"))return{kind:"app",tag:"DEVICE",text:"Microphone blocked — allow mic for this site in Chrome."};
+  if(m.includes("camera"))return{kind:"app",tag:"DEVICE",text:msg};
+  if(m.includes("speech recognition network"))return{kind:"app",tag:"BROWSER",text:"Chrome speech service unreachable — use real Google Chrome online."};
+  return{kind:"app",tag:"APP BUG",text:msg+" — screenshot this and send it to Claude."};
 }
 function popup(kind,tag,text){
-  const wrap=$("popups");
-  const d=document.createElement("div");
+  const w=$("popups"),d=document.createElement("div");
   d.className="popup "+kind;
   d.innerHTML='<span class="tag">'+tag+'</span><span>'+escapeHtml(text)+'</span><button class="x">✕</button>';
   d.querySelector(".x").onclick=()=>d.remove();
-  wrap.appendChild(d);
-  while(wrap.children.length>3) wrap.firstChild.remove();
+  w.appendChild(d);while(w.children.length>3)w.firstChild.remove();
   setTimeout(()=>{if(d.parentNode)d.remove();},12000);
 }
-function showErr(msg){
-  const c=classifyError(msg);
-  popup(c.kind,c.tag,c.text);
-  errEl.textContent=c.text;errEl.classList.add("show");
-}
-// catch unexpected app bugs globally
-window.addEventListener("error",e=>popup("app","APP BUG",(e.message||"Unknown script error")+" — screenshot this and send it to Claude."));
-window.addEventListener("unhandledrejection",e=>{const m=(e.reason&&e.reason.message)||String(e.reason||"Unknown error");showErr(m);});
+function showErr(msg){const c=classifyError(msg);popup(c.kind,c.tag,c.text);errEl.textContent=c.text;errEl.classList.add("show");}
 function clearErr(){errEl.classList.remove("show");}
+window.addEventListener("error",e=>popup("app","APP BUG",(e.message||"Unknown script error")+" — screenshot this and send it to Claude."));
+window.addEventListener("unhandledrejection",e=>{showErr((e.reason&&e.reason.message)||String(e.reason||"Unknown error"));});
+
 function setStatus(t,live){statusEl.textContent=t;statusEl.classList.toggle("live",!!live);}
 
+/* ---------- theme ---------- */
+const themeBtn=$("themeBtn");
+function applyTheme(dark){document.body.classList.toggle("dark",dark);themeBtn.textContent=dark?"☀️":"🌙";}
+let darkPref=matchMedia("(prefers-color-scheme: dark)").matches;applyTheme(darkPref);
+themeBtn.onclick=()=>{darkPref=!darkPref;applyTheme(darkPref);};
+
+/* ---------- key ---------- */
+const savedOai=localStorage.getItem("lt_oai_key");if(savedOai)$("oaiKey").value=savedOai;
+$("oaiKey").addEventListener("change",()=>localStorage.setItem("lt_oai_key",$("oaiKey").value.trim()));
+function keyCheck(){
+  if(!$("oaiKey").value.trim()){showErr("No API key set. Open ⚙️ Settings and paste your OpenAI key.");return false;}
+  return true;
+}
+
+/* ---------- OpenAI helpers ---------- */
+async function aiChat(userContent,maxTokens){
+  const r=await fetch("https://api.openai.com/v1/chat/completions",{
+    method:"POST",
+    headers:{"Content-Type":"application/json","Authorization":"Bearer "+$("oaiKey").value.trim()},
+    body:JSON.stringify({model:"gpt-4o-mini",max_tokens:maxTokens||800,messages:[{role:"user",content:userContent}]})
+  });
+  if(!r.ok){const t=await r.text().catch(()=>"");throw new Error("API "+r.status+(t?": "+t.slice(0,160):""));}
+  const d=await r.json();
+  return (d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content||"").trim();
+}
+
+/* ---------- pair selectors ---------- */
 function ensureDifferent(changed){
   if(srcSel.value===dstSel.value){
-    const other = ["en","ja","he"].find(l=>l!==srcSel.value);
+    const other=["en","ja","he"].find(l=>l!==srcSel.value);
     (changed==="src"?dstSel:srcSel).value=other;
   }
 }
-srcSel.onchange=()=>ensureDifferent("src");
-dstSel.onchange=()=>ensureDifferent("dst");
-$("swapBtn").onclick=()=>{const a=srcSel.value;srcSel.value=dstSel.value;dstSel.value=a;};
+srcSel.onchange=()=>{ensureDifferent("src");refreshMicLabels();};
+dstSel.onchange=()=>{ensureDifferent("dst");refreshMicLabels();};
+$("swapBtn").onclick=()=>{const a=srcSel.value;srcSel.value=dstSel.value;dstSel.value=a;refreshMicLabels();};
+function refreshMicLabels(){
+  $("micLblA").textContent=LANG[srcSel.value].label+" → "+LANG[dstSel.value].label;
+  $("micLblB").textContent=LANG[dstSel.value].label+" → "+LANG[srcSel.value].label;
+}
+refreshMicLabels();
 
-autoSpeakBtn.onclick=()=>{autoSpeak=!autoSpeak;autoSpeakBtn.textContent="🔊 Auto-speak: "+(autoSpeak?"ON":"OFF");autoSpeakBtn.classList.toggle("on",autoSpeak);};
 autoSpeakBtn.classList.add("on");
+autoSpeakBtn.onclick=()=>{autoSpeak=!autoSpeak;autoSpeakBtn.textContent="🔊 Auto-speak: "+(autoSpeak?"ON":"OFF");autoSpeakBtn.classList.toggle("on",autoSpeak);};
 
-
-const themeBtn=$("themeBtn");
-function applyTheme(dark){document.body.classList.toggle("dark",dark);themeBtn.textContent=dark?"☀️":"🌙";}
-let darkPref = matchMedia("(prefers-color-scheme: dark)").matches;
-applyTheme(darkPref);
-themeBtn.onclick=()=>{darkPref=!darkPref;applyTheme(darkPref);};
-
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-if(!SR){showErr("Speech recognition is not supported in this browser. Use Chrome (desktop or Android).");micBtn.disabled=true;}
-
-const outRomaji=$("outRomaji"), repliesBox=$("repliesBox"), repliesList=$("repliesList");
-
-let listeningStoppedManually=false;
-let translatedSoFar="";      // accumulated translated output
-let pendingQueue=[];         // chunks waiting to be translated
-let translating=false;
-let sessionSourceText="";    // full heard text this session
-let extrasTimer=null;
-
-const histBox=$("histBox"), histList=$("histList");
-let lastRomajiShown="";
-let lastTurnEl=null;
-function pushTurnToHistory(){
-  if(!sessionSourceText || !translatedSoFar) return;
+/* ---------- history ---------- */
+function pushTurn(cls,srcText,dstText,ro){
   histBox.style.display="";
   const d=document.createElement("div");
-  d.className="turn "+(activeBtn===micBtnB?"b":"a");
-  d.innerHTML='<div class="src">'+escapeHtml(sessionSourceText)+'</div>'
-    +'<div class="dst">'+escapeHtml(translatedSoFar)+'</div>'
-    +'<div class="ro"></div>';
-  histList.prepend(d);
-  lastTurnEl=d;
+  d.className="turn "+cls;
+  d.innerHTML='<div class="src">'+escapeHtml(srcText)+'</div><div class="dst">'+escapeHtml(dstText)+'</div><div class="ro">'+escapeHtml(ro||"")+'</div>';
+  histList.prepend(d);          // newest first
+  histList.scrollTop=0;         // scroll INSIDE the box
+  return d;
 }
-let displayDirty=false; // true = boxes still show the previous turn
-function resetSession(){
-  translationFailed=false;
-  translatedSoFar="";pendingQueue=[];sessionSourceText="";
-  displayDirty=true; // keep previous turn on screen until new speech arrives
+function pushTurnToHistory(){
+  if(!sessionSourceText||!translatedSoFar)return;
+  lastTurnEl=pushTurn(activeBtn===micBtnB?"b":"a",sessionSourceText,translatedSoFar,"");
 }
+
+/* ---------- speech recognition (mic buttons + conversation) ---------- */
+const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
+if(!SR){showErr("Speech recognition not supported — use Chrome.");micBtn.disabled=true;micBtnB.disabled=true;}
+
+function resetSession(){translationFailed=false;translatedSoFar="";pendingQueue=[];sessionSourceText="";displayDirty=true;}
 function clearDisplayIfDirty(){
-  if(!displayDirty) return;
-  displayDirty=false;
+  if(!displayDirty)return;displayDirty=false;
   outText.textContent="…";outText.classList.add("placeholder");
   outRomaji.textContent="";repliesBox.style.display="none";repliesList.innerHTML="";
   inText.textContent="";
@@ -339,436 +291,315 @@ function startListening(){
   clearErr();
   if(!keyCheck()){stopUI();convoMode=false;convoBtn.textContent="🗣 Conversation: OFF";convoBtn.classList.remove("on");return;}
   resetSession();
-  rec = new SR();
-  rec.lang = LANG[activeSrc].bcp;
-  rec.interimResults = true;
-  rec.continuous = true;
-  let enqueuedLen = 0;
+  rec=new SR();
+  rec.lang=LANG[activeSrc].bcp;
+  rec.interimResults=true;
+  rec.continuous=true;
+  let enqueuedLen=0;
 
-  // append b to a, trimming any overlapping repetition (Android Chrome re-sends earlier speech)
   function mergeOverlap(a,b){
-    a=a.trim(); b=b.trim();
-    if(!a) return b;
-    if(!b) return a;
-    const al=a.toLowerCase(), bl=b.toLowerCase();
-    if(al.endsWith(bl)) return a;                 // b entirely repeated
-    const max=Math.min(al.length,bl.length);
-    for(let k=max;k>0;k--){                        // longest suffix of a == prefix of b
-      if(al.slice(-k)===bl.slice(0,k)) return a+" "+b.slice(k).trim();
-    }
+    a=a.trim();b=b.trim();
+    if(!a)return b;if(!b)return a;
+    const al=a.toLowerCase(),bl=b.toLowerCase();
+    if(al.endsWith(bl))return a;
+    for(let k=Math.min(al.length,bl.length);k>0;k--)if(al.slice(-k)===bl.slice(0,k))return a+" "+b.slice(k).trim();
     return a+" "+b;
   }
 
-  rec.onresult = e=>{
-    let finals="", interim="";
+  rec.onresult=e=>{
+    let finals="",interim="";
     for(let i=0;i<e.results.length;i++){
-      const r=e.results[i];
-      const t=r[0].transcript.trim();
-      if(!t) continue;
-      if(r.isFinal) finals = mergeOverlap(finals,t);
-      else interim = mergeOverlap(interim,t);
+      const t=e.results[i][0].transcript.trim();
+      if(!t)continue;
+      if(e.results[i].isFinal)finals=mergeOverlap(finals,t);else interim=mergeOverlap(interim,t);
     }
-    sessionSourceText = finals;
-    // queue only the new, not-yet-translated tail
-    if(finals.length > enqueuedLen){
-      const newPart = finals.slice(enqueuedLen).trim();
-      enqueuedLen = finals.length;
-      if(newPart) enqueueChunk(newPart);
-      if(convoMode){ // end the turn after ~1.5s of silence instead of waiting for the mic to shut off
-        if(turnTimer) clearTimeout(turnTimer);
-        turnTimer = setTimeout(()=>{ try{rec.stop();}catch(e){} }, 1500);
-      }
+    sessionSourceText=finals;
+    if(finals||interim)clearDisplayIfDirty();
+    if(finals.length>enqueuedLen){
+      const np=finals.slice(enqueuedLen).trim();enqueuedLen=finals.length;
+      if(np)enqueueChunk(np);
+      if(convoMode){if(turnTimer)clearTimeout(turnTimer);turnTimer=setTimeout(()=>{try{rec.stop();}catch(x){}},1500);}
     }
-    if(finals || interim) clearDisplayIfDirty();
-    const shown = interim ? mergeOverlap(finals,interim) : finals;
     inText.classList.remove("placeholder");
-    inText.textContent = shown;
-    inText.dir = activeSrc==="he" ? "rtl":"ltr";
+    inText.textContent=interim?mergeOverlap(finals,interim):finals;
+    inText.dir=activeSrc==="he"?"rtl":"ltr";
   };
-  rec.onerror = e=>{
-    if(e.error==="no-speech"){ setStatus("No speech detected"); }
-    else if(e.error==="not-allowed"){ showErr("Mic permission denied. Allow microphone access and retry."); }
-    else if(e.error==="network") showErr("Speech recognition network error — Chrome's speech service is unreachable. Check internet, and on desktop make sure it's real Google Chrome (not Brave/Edge-derivative with shields).");
-    else if(e.error!=="aborted") showErr("Recognition error: "+e.error);
+  rec.onerror=e=>{
+    if(e.error==="no-speech")setStatus("No speech detected");
+    else if(e.error==="not-allowed")showErr("Mic permission denied.");
+    else if(e.error==="network")showErr("Speech recognition network error");
+    else if(e.error!=="aborted")showErr("Recognition error: "+e.error);
   };
-  rec.onend = async ()=>{
-    if(convoMode && listening && !listeningStoppedManually){
+  rec.onend=async()=>{
+    if(convoMode&&listening&&!listeningStoppedManually){
       stopUI();
-      // wait for queued chunks to finish translating
-      while(translating || pendingQueue.length){ await new Promise(r=>setTimeout(r,150)); }
-      if(!sessionSourceText){ // silence, just relisten same direction
-        startListening(); return;
+      while(translating||pendingQueue.length){await new Promise(r=>setTimeout(r,120));}
+      if(!sessionSourceText){startListening();return;}
+      if(translationFailed||!translatedSoFar){
+        convoMode=false;convoBtn.textContent="🗣 Conversation: OFF";convoBtn.classList.remove("on");stopUI();return;
       }
-      if(translationFailed || !translatedSoFar){
-        // translation failed — stop the loop instead of flipping into nothing
-        convoMode=false;
-        convoBtn.textContent="🗣 Conversation: OFF";convoBtn.classList.remove("on");
-        stopUI();
-        return;
-      }
-      pushTurnToHistory();     // record the turn right away so it never disappears
+      pushTurnToHistory();
       fetchExtras();
-      await waitForSpeech();   // let the spoken translation finish (instant if Auto-speak is off)
+      await waitForSpeech();
       [activeSrc,activeDst]=[activeDst,activeSrc];
-      activeBtn = (activeBtn===micBtn)?micBtnB:micBtn;
-      startListening();
-      return;
+      activeBtn=(activeBtn===micBtn)?micBtnB:micBtn;
+      startListening();return;
     }
-    if(listening && !listeningStoppedManually && continuous){
-      try{rec.start();}catch(err){}
-      return;
-    }
+    if(listening&&!listeningStoppedManually){try{rec.start();}catch(x){}return;}
     stopUI();
   };
   rec.start();
   startUI();
 }
 
-function enqueueChunk(chunk){
-  pendingQueue.push(chunk);
-  processQueue();
-  // schedule romaji + replies once speech pauses
-  if(extrasTimer) clearTimeout(extrasTimer);
-  extrasTimer = setTimeout(fetchExtras, 1800);
-}
-
-async function processQueue(){
-  if(translating) return;
-  translating=true;
-  while(pendingQueue.length){
-    const batch = pendingQueue.splice(0).join(" ");
-    await translateChunk(batch);
-  }
-  translating=false;
-}
-
-async function translateChunk(text){
-  setStatus("Translating…",true);
-  const src=LANG[activeSrc].name, dst=LANG[activeDst].name;
-  try{
-    const out = await aiChat(
-"You are translating a live spoken conversation from "+src+" to "+dst+". "+
-(translatedSoFar?("Translation so far (for context, do not repeat it): "+translatedSoFar+"\n\n"):"")+
-"Translate ONLY this next segment, naturally and conversationally. Respond with ONLY the translation text, nothing else:\n\n"+text, 800);
-    if(!out) throw new Error("empty response");
-    translatedSoFar += (translatedSoFar?" ":"")+out;
-    outText.classList.remove("placeholder");
-    outText.textContent = translatedSoFar;
-    outText.dir = activeDst==="he" ? "rtl":"ltr";
-    setStatus(listening?"Listening ("+LANG[activeSrc].label+")…":"Done", listening);
-    if(autoSpeak) speak(out, activeDst);
-  }catch(e){
-    showErr("Translation failed — "+(e.message||"connection error"));
-    setStatus("Ready");
-    translationFailed=true;
-  }
-}
-
-async function fetchExtras(){
-  const jaInvolved = activeSrc==="ja" || activeDst==="ja";
-  if(!jaInvolved || !sessionSourceText) return;
-  const src=LANG[activeSrc].name, dst=LANG[activeDst].name;
-  const userLang = activeSrc==="ja" ? dst : src;
-  const jaText = activeDst==="ja" ? translatedSoFar : sessionSourceText;
-  try{
-    let raw = await aiChat(
-"Japanese text from a live conversation:\n\n"+jaText+"\n\nRespond ONLY with valid JSON, no markdown fences:\n"+
-'{"romaji":"romaji of the Japanese text","replies":[{"ja":"short natural Japanese reply","romaji":"its romaji","meaning":"its meaning in '+userLang+'"},{...},{...}]}', 1200);
-    raw = raw.replace(/```json|```/g,"").trim();
-    const obj = JSON.parse(raw);
-    if(obj.romaji){outRomaji.textContent = obj.romaji; if(lastTurnEl){const ro=lastTurnEl.querySelector(".ro"); if(ro && !ro.textContent) ro.textContent=obj.romaji;}}
-    if(Array.isArray(obj.replies) && obj.replies.length){
-      repliesBox.style.display="";repliesList.innerHTML="";
-      const userDir = userLang==="Hebrew"?"rtl":"ltr";
-      for(const rep of obj.replies){
-        const d=document.createElement("div");
-        d.className="reply";
-        d.innerHTML =
-          '<div class="ja">'+escapeHtml(rep.ja||"")+'</div>'+
-          '<div class="ro">'+escapeHtml(rep.romaji||"")+'</div>'+
-          '<div class="mean" dir="'+userDir+'">'+escapeHtml(rep.meaning||"")+'</div>';
-        d.onclick=()=>speak(rep.ja,"ja");
-        repliesList.appendChild(d);
-      }
-    }
-  }catch(e){ /* extras are best-effort */ }
-}
-
-function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
-
-async function aiChat(userContent, maxTokens){
-  const r = await fetch("https://api.openai.com/v1/chat/completions",{
-    method:"POST",
-    headers:{"Content-Type":"application/json","Authorization":"Bearer "+$("oaiKey").value.trim()},
-    body:JSON.stringify({model:"gpt-4o-mini",max_tokens:maxTokens||800,
-      messages:[{role:"user",content:userContent}]})
-  });
-  if(!r.ok){
-    const t=await r.text().catch(()=>"");
-    throw new Error("API "+r.status+(t?": "+t.slice(0,160):""));
-  }
-  const data=await r.json();
-  return (data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content||"").trim();
-}
-
-const micBtnB=$("micBtnB");
-let activeBtn=null;
 function startUI(){listening=true;listeningStoppedManually=false;if(activeBtn)activeBtn.classList.add("listening");setStatus("Listening ("+LANG[activeSrc].label+")…",true);}
 function stopUI(){listening=false;micBtn.classList.remove("listening");micBtnB.classList.remove("listening");setStatus("Ready");}
 
-function toggleMic(btn, src, dst){
+function toggleMic(btn,src,dst){
   if(listening){
-    const same = activeBtn===btn;
-    listeningStoppedManually=true;try{rec && rec.stop();}catch(e){};stopUI();fetchExtras();
-    setTimeout(pushTurnToHistory, 400);
-    if(same) return; // tapped the active one: just stop
+    const same=activeBtn===btn;
+    listeningStoppedManually=true;try{rec&&rec.stop();}catch(e){}stopUI();fetchExtras();
+    setTimeout(pushTurnToHistory,400);
+    if(same)return;
   }
-  activeBtn=btn; activeSrc=src; activeDst=dst;
+  activeBtn=btn;activeSrc=src;activeDst=dst;
   startListening();
 }
-micBtn.onclick = ()=>toggleMic(micBtn, srcSel.value, dstSel.value);
-micBtnB.onclick = ()=>toggleMic(micBtnB, dstSel.value, srcSel.value);
+micBtn.onclick=()=>toggleMic(micBtn,srcSel.value,dstSel.value);
+micBtnB.onclick=()=>toggleMic(micBtnB,dstSel.value,srcSel.value);
+
+convoBtn.onclick=()=>{
+  convoMode=!convoMode;
+  convoBtn.textContent="🗣 Conversation: "+(convoMode?"ON":"OFF");
+  convoBtn.classList.toggle("on",convoMode);
+  if(convoMode&&!listening){activeBtn=micBtn;activeSrc=srcSel.value;activeDst=dstSel.value;startListening();}
+  if(!convoMode&&listening){listeningStoppedManually=true;try{rec&&rec.stop();}catch(e){}stopUI();}
+};
 
 function waitForSpeech(){
   return new Promise(res=>{
-    if(!window.speechSynthesis || !speechSynthesis.speaking){res();return;}
+    if(!window.speechSynthesis||!speechSynthesis.speaking){res();return;}
     const iv=setInterval(()=>{if(!speechSynthesis.speaking){clearInterval(iv);res();}},120);
     setTimeout(()=>{clearInterval(iv);res();},15000);
   });
 }
 
-const convoBtn=$("convoBtn");
-convoBtn.onclick=()=>{
-  convoMode=!convoMode;
-  convoBtn.textContent="🗣 Conversation: "+(convoMode?"ON":"OFF");
-  convoBtn.classList.toggle("on",convoMode);
-  if(convoMode && !listening){
-    activeBtn=micBtn; activeSrc=srcSel.value; activeDst=dstSel.value;
-    startListening();
-  }
-  if(!convoMode && listening){
-    listeningStoppedManually=true;try{rec&&rec.stop();}catch(e){};stopUI();
-  }
-};
-
-function refreshMicLabels(){
-  $("micLblA").textContent = LANG[srcSel.value].label+" → "+LANG[dstSel.value].label;
-  $("micLblB").textContent = LANG[dstSel.value].label+" → "+LANG[srcSel.value].label;
+/* ---------- chunked translation ---------- */
+function enqueueChunk(chunk){
+  pendingQueue.push(chunk);
+  processQueue();
+  if(extrasTimer)clearTimeout(extrasTimer);
+  extrasTimer=setTimeout(fetchExtras,1800);
 }
-srcSel.addEventListener("change",refreshMicLabels);
-dstSel.addEventListener("change",refreshMicLabels);
-$("swapBtn").addEventListener("click",refreshMicLabels);
-refreshMicLabels();
+async function processQueue(){
+  if(translating)return;translating=true;
+  while(pendingQueue.length){await translateChunk(pendingQueue.splice(0).join(" "));}
+  translating=false;
+}
+async function translateChunk(text){
+  setStatus("Translating…",true);
+  const src=LANG[activeSrc].name,dst=LANG[activeDst].name;
+  try{
+    const out=await aiChat(
+"Translate this "+src+" speech segment into "+dst+". "+
+(translatedSoFar?("Earlier context (do not repeat): "+translatedSoFar+"\n"):"")+
+"IMPORTANT: your entire reply must be written in "+dst+" only. No romaji, no explanations, no quotes.\nSegment: "+text,600);
+    if(!out)throw new Error("empty response");
+    translatedSoFar+=(translatedSoFar?" ":"")+out;
+    outText.classList.remove("placeholder");
+    outText.textContent=translatedSoFar;
+    outText.dir=activeDst==="he"?"rtl":"ltr";
+    setStatus(listening?"Listening ("+LANG[activeSrc].label+")…":"Done",listening);
+    if(autoSpeak)speak(out,activeDst);
+  }catch(e){showErr("Translation failed — "+(e.message||"connection error"));setStatus("Ready");translationFailed=true;}
+}
 
-// ---- Camera live translate ----
-const camBox=$("camBox"), camVideo=$("camVideo"), camOut=$("camOut"), camRomajiEl=$("camRomaji");
-let camStream=null, camTimer=null, camBusy=false, lastCamText="";
-$("camBtn").onclick=async ()=>{
+/* ---------- romaji + suggested replies ---------- */
+async function fetchExtras(){
+  const jaInvolved=activeSrc==="ja"||activeDst==="ja";
+  if(!jaInvolved||!sessionSourceText)return;
+  const userLang=activeSrc==="ja"?LANG[activeDst].name:LANG[activeSrc].name;
+  const jaText=activeDst==="ja"?translatedSoFar:sessionSourceText;
+  if(!jaText)return;
+  try{
+    let raw=await aiChat(
+"Japanese text from a live conversation:\n\n"+jaText+"\n\nRespond ONLY with valid JSON, no markdown fences:\n"+
+'{"romaji":"romaji of the Japanese text","replies":[{"ja":"short natural Japanese reply","romaji":"its romaji","meaning":"its meaning in '+userLang+'"},{"ja":"...","romaji":"...","meaning":"..."},{"ja":"...","romaji":"...","meaning":"..."}]}',1000);
+    raw=raw.replace(/```json|```/g,"").trim();
+    const obj=JSON.parse(raw);
+    if(obj.romaji){
+      outRomaji.textContent=obj.romaji;
+      if(lastTurnEl){const ro=lastTurnEl.querySelector(".ro");if(ro&&!ro.textContent)ro.textContent=obj.romaji;}
+    }
+    if(Array.isArray(obj.replies)&&obj.replies.length){
+      repliesBox.style.display="";repliesList.innerHTML="";
+      const dir=userLang==="Hebrew"?"rtl":"ltr";
+      for(const rep of obj.replies){
+        const d=document.createElement("div");
+        d.className="reply";
+        d.innerHTML='<div class="ja">'+escapeHtml(rep.ja||"")+'</div><div class="ro">'+escapeHtml(rep.romaji||"")+'</div><div class="mean" dir="'+dir+'">'+escapeHtml(rep.meaning||"")+'</div>';
+        d.onclick=()=>speak(rep.ja,"ja");
+        repliesList.appendChild(d);
+      }
+    }
+  }catch(e){/* extras are best-effort */}
+}
+
+/* ---------- TTS ---------- */
+function speak(text,lang){
+  if(!window.speechSynthesis)return;
+  const u=new SpeechSynthesisUtterance(text);
+  u.lang=LANG[lang].bcp;
+  const vs=speechSynthesis.getVoices();
+  const v=vs.find(v=>v.lang.startsWith(lang))||vs.find(v=>v.lang.startsWith(LANG[lang].bcp.split("-")[0]));
+  if(v)u.voice=v;
+  speechSynthesis.speak(u);
+}
+if(window.speechSynthesis)speechSynthesis.getVoices();
+
+/* ---------- SIMULTANEOUS (Whisper auto-language) ---------- */
+let simulOn=false,simulStream=null,simulRecorder=null,simulLoopActive=false;
+let audioCtx=null,analyser=null,levelData=null;
+
+simulBtn.onclick=async()=>{
+  if(simulOn){stopSimul();return;}
   clearErr();
   if(!keyCheck())return;
-  if(listening){listeningStoppedManually=true;try{rec&&rec.stop();}catch(e){};stopUI();}
+  if(listening){listeningStoppedManually=true;try{rec&&rec.stop();}catch(e){}stopUI();}
+  if(convoMode){convoMode=false;convoBtn.textContent="🗣 Conversation: OFF";convoBtn.classList.remove("on");}
+  try{simulStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});}
+  catch(e){showErr("Mic permission denied.");return;}
+  audioCtx=new (window.AudioContext||window.webkitAudioContext)();
+  const sn=audioCtx.createMediaStreamSource(simulStream);
+  analyser=audioCtx.createAnalyser();analyser.fftSize=512;
+  levelData=new Uint8Array(analyser.frequencyBinCount);
+  sn.connect(analyser);
+  simulOn=true;simulLoopActive=true;
+  simulBtn.textContent="⚡ Simultaneous: ON";simulBtn.classList.add("on");
+  setStatus("Simultaneous — listening to both languages…",true);
+  histBox.style.display="";
+  simulLoop();
+};
+function stopSimul(){
+  simulOn=false;simulLoopActive=false;
+  try{simulRecorder&&simulRecorder.state!=="inactive"&&simulRecorder.stop();}catch(e){}
+  if(simulStream){simulStream.getTracks().forEach(t=>t.stop());simulStream=null;}
+  if(audioCtx){audioCtx.close();audioCtx=null;}
+  simulBtn.textContent="⚡ Simultaneous: OFF";simulBtn.classList.remove("on");
+  setStatus("Ready");
+}
+function micLevel(){
+  analyser.getByteFrequencyData(levelData);
+  let s=0;for(let i=0;i<levelData.length;i++)s+=levelData[i];
+  return s/levelData.length;
+}
+async function simulLoop(){
+  while(simulLoopActive){
+    const blob=await recordSegment(4000);
+    if(!simulLoopActive)break;
+    if(blob&&blob.size>4000)processSegment(blob);
+  }
+}
+function recordSegment(ms){
+  return new Promise(res=>{
+    let peak=0;
+    const mime=MediaRecorder.isTypeSupported("audio/webm;codecs=opus")?"audio/webm;codecs=opus":"";
+    simulRecorder=new MediaRecorder(simulStream,mime?{mimeType:mime}:{});
+    const chunks=[];
+    simulRecorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};
+    simulRecorder.onstop=()=>res(peak>18?new Blob(chunks,{type:mime||"audio/webm"}):null);
+    simulRecorder.start();
+    const iv=setInterval(()=>{const l=micLevel();if(l>peak)peak=l;},120);
+    setTimeout(()=>{clearInterval(iv);try{simulRecorder.stop();}catch(e){res(null);}},ms);
+  });
+}
+async function processSegment(blob){
   try{
-    camStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}, audio:false});
-  }catch(e){ showErr("Camera permission denied or unavailable."); return; }
-  camVideo.srcObject = camStream;
+    const fd=new FormData();
+    fd.append("file",blob,"seg.webm");
+    fd.append("model","whisper-1");
+    fd.append("response_format","verbose_json");
+    const wr=await fetch("https://api.openai.com/v1/audio/transcriptions",{
+      method:"POST",headers:{"Authorization":"Bearer "+$("oaiKey").value.trim()},body:fd});
+    if(!wr.ok){const t=await wr.text().catch(()=>"");showErr("Whisper API "+wr.status+(t?" — "+t.slice(0,120):""));return;}
+    const w=await wr.json();
+    const text=(w.text||"").trim(),lang=(w.language||"").toLowerCase();
+    if(!text||text.length<2)return;
+    let segSrc=lang.startsWith("ja")||lang==="japanese"?"ja":lang.startsWith("he")||lang==="hebrew"?"he":lang.startsWith("en")||lang==="english"?"en":null;
+    if(!segSrc)return;
+    const segDst=segSrc==="en"?"ja":"en";
+    let raw;
+    try{
+      raw=await aiChat(
+"A person just said this in "+LANG[segSrc].name+' during a live conversation: "'+text.replace(/"/g,"'")+'"\n'+
+"Task: translate it into "+LANG[segDst].name+".\n"+
+'Respond ONLY with valid JSON, no fences, exactly: {"t":"the translation written in '+LANG[segDst].name+'","r":"romaji of the Japanese side (the original if it was Japanese, the translation if the translation is Japanese)"}\n'+
+'Rules: "t" MUST be in '+LANG[segDst].name+'. If '+LANG[segDst].name+' is English, "t" must contain no Japanese characters and no romaji — English words only.',500);
+    }catch(e){showErr("Translation error — "+(e.message||""));return;}
+    raw=raw.replace(/```json|```/g,"").trim();
+    let obj;try{obj=JSON.parse(raw);}catch(e){obj={t:raw,r:""};}
+    // safety: if target is English but "t" contains Japanese characters, retry once plainly
+    if(segDst==="en"&&/[\u3040-\u30ff\u4e00-\u9fff]/.test(obj.t||"")){
+      try{obj.t=await aiChat('Translate to natural English, reply with the English translation only: '+text,300);}catch(e){}
+    }
+    pushTurn(segSrc==="en"?"a":"b",text,obj.t||"",obj.r||"");
+  }catch(e){showErr("Simultaneous error: "+(e.message||"unknown"));}
+}
+
+/* ---------- CAMERA ---------- */
+const camBox=$("camBox"),camVideo=$("camVideo"),camOut=$("camOut"),camRomajiEl=$("camRomaji");
+let camStream=null,camTimer=null,camBusy=false,lastCamText="",camScanCount=0;
+$("camBtn").onclick=async()=>{
+  clearErr();
+  if(!keyCheck())return;
+  if(listening){listeningStoppedManually=true;try{rec&&rec.stop();}catch(e){}stopUI();}
+  try{camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"},audio:false});}
+  catch(e){showErr("Camera permission denied or unavailable.");return;}
+  camVideo.srcObject=camStream;
   camBox.style.display="";
-  camOut.textContent="Point the camera at Japanese text…";
-  camOut.classList.add("placeholder");
-  camTimer = setInterval(captureAndTranslate, 3000);
+  camOut.textContent="Point the camera at Japanese text…";camOut.classList.add("placeholder");
+  camScanCount=0;
+  camTimer=setInterval(captureAndTranslate,3000);
 };
 $("camStop").onclick=()=>{
   clearInterval(camTimer);camTimer=null;
   if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;}
   camBox.style.display="none";lastCamText="";
 };
-let camScanCount=0;
 async function captureAndTranslate(){
-  if(camBusy || !camStream) return;
-  camBusy=true;
-  camScanCount++;
-  if(camOut.classList.contains("placeholder")) camOut.textContent="Scanning… ("+camScanCount+")";
+  if(camBusy||!camStream)return;
+  camBusy=true;camScanCount++;
+  if(camOut.classList.contains("placeholder"))camOut.textContent="Scanning… ("+camScanCount+")";
   try{
     const c=document.createElement("canvas");
-    const w=camVideo.videoWidth, h=camVideo.videoHeight;
+    const w=camVideo.videoWidth,h=camVideo.videoHeight;
     if(!w){camBusy=false;return;}
-    const scale=Math.min(1, 1024/Math.max(w,h));
-    c.width=Math.round(w*scale); c.height=Math.round(h*scale);
+    const sc=Math.min(1,1024/Math.max(w,h));
+    c.width=Math.round(w*sc);c.height=Math.round(h*sc);
     c.getContext("2d").drawImage(camVideo,0,0,c.width,c.height);
-    const b64 = c.toDataURL("image/jpeg",0.7).split(",")[1];
-    const r = await fetch("https://api.openai.com/v1/chat/completions",{
+    const b64=c.toDataURL("image/jpeg",0.7).split(",")[1];
+    const r=await fetch("https://api.openai.com/v1/chat/completions",{
       method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+$("oaiKey").value.trim()},
-      body:JSON.stringify({
-        model:"gpt-4o-mini",max_tokens:800,
-        messages:[{role:"user",content:[
-          {type:"image_url",image_url:{url:"data:image/jpeg;base64,"+b64}},
-          {type:"text",text:'Extract any Japanese text visible in this image and translate it to English. Respond ONLY with valid JSON, no markdown fences: {"ja":"the Japanese text found (empty string if none)","romaji":"its romaji","en":"English translation"}. If no Japanese text is clearly readable, return {"ja":"","romaji":"","en":""}.'}
-        ]}]
-      })
+      body:JSON.stringify({model:"gpt-4o-mini",max_tokens:600,messages:[{role:"user",content:[
+        {type:"image_url",image_url:{url:"data:image/jpeg;base64,"+b64}},
+        {type:"text",text:'Extract any Japanese text visible in this image and translate it to English. Respond ONLY with valid JSON, no markdown fences: {"ja":"the Japanese text found (empty if none)","romaji":"its romaji","en":"English translation"}.'}]}]})
     });
-    if(!r.ok){
-      const t=await r.text().catch(()=>"");
-      camOut.classList.remove("placeholder");
-      camOut.textContent="Camera translate error: API "+r.status+(t?" — "+t.slice(0,120):"");
-      camBusy=false;return;
-    }
-    const data = await r.json();
+    if(!r.ok){const t=await r.text().catch(()=>"");camOut.classList.remove("placeholder");camOut.textContent="Camera error: API "+r.status+(t?" — "+t.slice(0,120):"");camBusy=false;return;}
+    const data=await r.json();
     let raw=(data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content||"").trim().replace(/```json|```/g,"").trim();
-    let obj;
-    try{ obj = JSON.parse(raw); }
-    catch(pe){
-      camOut.classList.remove("placeholder");
-      camOut.textContent = raw ? raw.slice(0,300) : "Could not read a response — try again.";
-      camBusy=false;return;
-    }
-    if(obj.en && obj.ja!==lastCamText){
+    let obj;try{obj=JSON.parse(raw);}catch(e){camOut.classList.remove("placeholder");camOut.textContent=raw?raw.slice(0,300):"Could not read a response — try again.";camBusy=false;return;}
+    if(obj.en&&obj.ja!==lastCamText){
       lastCamText=obj.ja;
       camOut.classList.remove("placeholder");
-      camOut.textContent = obj.en;
-      camRomajiEl.textContent = obj.ja + (obj.romaji? "  ·  "+obj.romaji : "");
-    } else if(!obj.en && !lastCamText){
-      camOut.textContent="No Japanese text detected yet…";
-    }
-  }catch(e){
-    camOut.classList.remove("placeholder");
-    camOut.textContent="Camera translate error: "+(e.message||"unknown");
-  }
+      camOut.textContent=obj.en;
+      camRomajiEl.textContent=obj.ja+(obj.romaji?"  ·  "+obj.romaji:"");
+    }else if(!obj.en&&!lastCamText){camOut.textContent="No Japanese text detected yet… ("+camScanCount+")";}
+  }catch(e){camOut.classList.remove("placeholder");camOut.textContent="Camera error: "+(e.message||"unknown");}
   camBusy=false;
 }
 
-
-function speak(text, lang){
-  if(!window.speechSynthesis)return;
-  const u = new SpeechSynthesisUtterance(text);
-  u.lang = LANG[lang].bcp;
-  const voices = speechSynthesis.getVoices();
-  const v = voices.find(v=>v.lang.startsWith(lang)) || voices.find(v=>v.lang.startsWith(LANG[lang].bcp.split("-")[0]));
-  if(v) u.voice=v;
-  u.rate = 1.0;
-  speechSynthesis.speak(u);
-}
-// ================= SIMULTANEOUS MODE (Whisper auto-language) =================
-const simulBtn=$("simulBtn");
-let simulOn=false, simulStream=null, simulRecorder=null, simulLoopActive=false;
-let audioCtx=null, analyser=null, levelData=null;
-
-simulBtn.onclick=async ()=>{
-  if(simulOn){ stopSimul(); return; }
-  clearErr();
-  if(!keyCheck()) return;
-  if(listening){listeningStoppedManually=true;try{rec&&rec.stop();}catch(e){};stopUI();}
-  if(convoMode){convoMode=false;convoBtn.textContent="🗣 Conversation: OFF";convoBtn.classList.remove("on");}
-  try{
-    simulStream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});
-  }catch(e){ showErr("Mic permission denied."); return; }
-  audioCtx = new (window.AudioContext||window.webkitAudioContext)();
-  const srcNode = audioCtx.createMediaStreamSource(simulStream);
-  analyser = audioCtx.createAnalyser(); analyser.fftSize=512;
-  levelData = new Uint8Array(analyser.frequencyBinCount);
-  srcNode.connect(analyser);
-  simulOn=true; simulLoopActive=true;
-  simulBtn.textContent="⚡ Simultaneous: ON"; simulBtn.classList.add("on");
-  setStatus("Simultaneous — listening to both languages…",true);
-  histBox.style.display="";
-  simulLoop();
-};
-
-function stopSimul(){
-  simulOn=false; simulLoopActive=false;
-  try{simulRecorder && simulRecorder.state!=="inactive" && simulRecorder.stop();}catch(e){}
-  if(simulStream){simulStream.getTracks().forEach(t=>t.stop());simulStream=null;}
-  if(audioCtx){audioCtx.close();audioCtx=null;}
-  simulBtn.textContent="⚡ Simultaneous: OFF"; simulBtn.classList.remove("on");
-  setStatus("Ready");
-}
-
-function micLevel(){
-  analyser.getByteFrequencyData(levelData);
-  let sum=0;for(let i=0;i<levelData.length;i++)sum+=levelData[i];
-  return sum/levelData.length; // ~0 silence, higher = speech
-}
-
-async function simulLoop(){
-  // record in ~4s segments; skip silent ones; each segment is a standalone file for Whisper
-  while(simulLoopActive){
-    const blob = await recordSegment(4000);
-    if(!simulLoopActive) break;
-    if(blob && blob.size>4000) processSegment(blob); // fire and forget — keeps recording while transcribing
-  }
-}
-
-function recordSegment(ms){
-  return new Promise(res=>{
-    let peak=0;
-    const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "";
-    simulRecorder = new MediaRecorder(simulStream, mime?{mimeType:mime}:{});
-    const chunks=[];
-    simulRecorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};
-    simulRecorder.onstop=()=>res(peak>18 ? new Blob(chunks,{type:mime||"audio/webm"}) : null);
-    simulRecorder.start();
-    const iv=setInterval(()=>{const l=micLevel();if(l>peak)peak=l;},120);
-    setTimeout(()=>{clearInterval(iv);try{simulRecorder.stop();}catch(e){res(null);}},ms);
-  });
-}
-
-async function processSegment(blob){
-  try{
-    const fd=new FormData();
-    fd.append("file", blob, "seg.webm");
-    fd.append("model","whisper-1");
-    fd.append("response_format","verbose_json");
-    const wr = await fetch("https://api.openai.com/v1/audio/transcriptions",{
-      method:"POST",
-      headers:{"Authorization":"Bearer "+$("oaiKey").value.trim()},
-      body:fd
-    });
-    if(!wr.ok){
-      const t=await wr.text().catch(()=>"");
-      showErr("Whisper error "+wr.status+(t?" — "+t.slice(0,120):""));
-      return;
-    }
-    const w = await wr.json();
-    const text=(w.text||"").trim();
-    const lang=(w.language||"").toLowerCase();
-    if(!text || text.length<2) return;
-    // map whisper language to our pair; ignore anything that is not en/ja/he
-    let segSrc = lang.startsWith("ja")||lang==="japanese" ? "ja"
-               : lang.startsWith("he")||lang==="hebrew" ? "he"
-               : lang.startsWith("en")||lang==="english" ? "en" : null;
-    if(!segSrc) return;
-    const segDst = segSrc==="en" ? "ja" : "en"; // English → Japanese, anything else → English
-    // one Claude call: translation + romaji together
-    let raw;
-    try{
-      raw = await aiChat(
-'Live conversation segment in '+LANG[segSrc].name+': "'+text.replace(/"/g,"'")+'"\n'+
-'Translate to '+LANG[segDst].name+'. Respond ONLY with valid JSON, no fences: {"t":"translation","r":"romaji of whichever side is Japanese, empty if neither"}', 600);
-    }catch(e){showErr("Translation error — "+(e.message||""));return;}
-    raw = raw.replace(/```json|```/g,"").trim();
-    let obj; try{obj=JSON.parse(raw);}catch(e){obj={t:raw,r:""};}
-    // append to conversation history
-    histBox.style.display="";
-    const d=document.createElement("div");
-    d.className="turn "+(segSrc==="en"?"a":"b");
-    d.innerHTML='<div class="src">'+escapeHtml(text)+'</div>'
-      +'<div class="dst">'+escapeHtml(obj.t||"")+'</div>'
-      +(obj.r?'<div class="ro">'+escapeHtml(obj.r)+'</div>':'');
-    histList.prepend(d);
-  }catch(e){ showErr("Simultaneous error: "+(e.message||"unknown")); }
-}
-// =============================================================================
-if(window.speechSynthesis) speechSynthesis.getVoices();
+/* ---------- PWA ---------- */
 if("serviceWorker" in navigator){navigator.serviceWorker.register("sw.js").catch(()=>{});}
-function keyCheck(){
-  if(!$("oaiKey").value.trim()){
-    showErr("No API key set. Open ⚙️ Settings below and paste your OpenAI key (platform.openai.com) — translation cannot work without it.");
-    return false;
-  }
-  return true;
-}
-// persist API key on device so it's entered once
-const savedOai = localStorage.getItem("lt_oai_key");
-if(savedOai) $("oaiKey").value = savedOai;
-$("oaiKey").addEventListener("change",()=>localStorage.setItem("lt_oai_key", $("oaiKey").value.trim()));
 </script>
 </body>
 </html>
