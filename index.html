@@ -70,7 +70,9 @@
   .side{border:1.5px solid var(--line);background:var(--panel);border-radius:12px;padding:9px 12px;cursor:pointer;font-size:.85rem;font-weight:700;color:var(--ink)}
   .side.on{border-color:var(--ok);color:var(--ok)}
 
-  .reply{border:1px solid var(--line);border-radius:10px;padding:9px 11px;margin-top:8px;cursor:pointer;background:var(--reply-bg)}
+  #repliesBox{border-color:var(--ok);border-width:2px}
+  #repliesBox .label{color:var(--ok)}
+  .reply{border:1px solid var(--ok);border-radius:10px;padding:9px 11px;margin-top:8px;cursor:pointer;background:var(--reply-bg)}
   .reply:hover{border-color:var(--accent)}
   .reply .ja{font-size:1.05rem;font-weight:700}
   .reply .ro{font-size:.9rem;color:var(--muted);font-style:italic}
@@ -98,7 +100,7 @@
 <div class="popup-wrap" id="popups"></div>
 <div class="app">
   <header>
-    <h1>Live Translator <small>v11</small></h1>
+    <h1>Live Translator <small>v12</small></h1>
     <div class="right">
       <button class="theme" id="themeBtn">🌙</button>
       <div class="status" id="status">Ready</div>
@@ -111,15 +113,15 @@
     <div id="histList"></div>
   </div>
 
+  <div class="box" id="repliesBox" style="display:none">
+    <div class="label">💬 Suggested replies — tap to hear in Japanese</div>
+    <div id="repliesList"></div>
+  </div>
+
   <div class="box" id="outBox">
     <div class="label">Translation</div>
     <div class="text placeholder" id="outText">…</div>
     <div class="romaji" id="outRomaji"></div>
-  </div>
-
-  <div class="box" id="repliesBox" style="display:none">
-    <div class="label">Suggested replies</div>
-    <div id="repliesList"></div>
   </div>
 
   <div class="box" id="inBox">
@@ -555,7 +557,32 @@ async function processSegment(blob){
       if(/[\u3040-\u30ff\u4e00-\u9fff]/.test(obj.r||""))obj.r="";
     }
     pushTurn(segSrc==="en"?"a":"b",text,obj.t||"",obj.r||"");
+    if(segSrc==="ja") simulSuggest(text);
   }catch(e){showErr("Simultaneous error: "+(e.message||"unknown"));}
+}
+
+let suggestBusy=false;
+async function simulSuggest(jaText){
+  if(suggestBusy)return;suggestBusy=true;
+  try{
+    let raw=await aiChat(
+'Someone just said this in Japanese: "'+jaText.replace(/"/g,"'")+'"\n'+
+'Suggest 3 short natural Japanese replies. Respond ONLY with valid JSON, no fences:\n'+
+'{"replies":[{"ja":"Japanese reply","romaji":"Hepburn romaji, Latin letters only","meaning":"meaning in English"},{"ja":"...","romaji":"...","meaning":"..."},{"ja":"...","romaji":"...","meaning":"..."}]}',700);
+    raw=raw.replace(/```json|```/g,"").trim();
+    const obj=JSON.parse(raw);
+    if(Array.isArray(obj.replies)&&obj.replies.length){
+      repliesBox.style.display="";repliesList.innerHTML="";
+      for(const rep of obj.replies){
+        const d=document.createElement("div");
+        d.className="reply";
+        d.innerHTML='<div class="ja">'+escapeHtml(rep.ja||"")+'</div><div class="ro">'+escapeHtml(rep.romaji||"")+'</div><div class="mean">'+escapeHtml(rep.meaning||"")+'</div>';
+        d.onclick=()=>speak(rep.ja,"ja");
+        repliesList.appendChild(d);
+      }
+    }
+  }catch(e){/* best-effort */}
+  suggestBusy=false;
 }
 
 /* ---------- CAMERA ---------- */
