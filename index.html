@@ -195,6 +195,7 @@ const srcSel=$("srcLang"), dstSel=$("dstLang"), micBtn=$("micBtn"),
 
 let listening=false, autoSpeak=true, continuous=false, rec=null, busy=false;
 let convoMode=false;
+let translationFailed=false;
 let activeSrc="en", activeDst="ja";
 
 function showErr(msg){errEl.textContent=msg;errEl.classList.add("show");}
@@ -234,6 +235,7 @@ let sessionSourceText="";    // full heard text this session
 let extrasTimer=null;
 
 function resetSession(){
+  translationFailed=false;
   translatedSoFar="";pendingQueue=[];sessionSourceText="";
   outText.textContent="…";outText.classList.add("placeholder");
   outRomaji.textContent="";repliesBox.style.display="none";repliesList.innerHTML="";
@@ -242,6 +244,7 @@ function resetSession(){
 
 function startListening(){
   clearErr();
+  if(!keyCheck()){stopUI();convoMode=false;convoBtn.textContent="🗣 Conversation: OFF";convoBtn.classList.remove("on");return;}
   resetSession();
   rec = new SR();
   rec.lang = LANG[activeSrc].bcp;
@@ -268,6 +271,7 @@ function startListening(){
   rec.onerror = e=>{
     if(e.error==="no-speech"){ setStatus("No speech detected"); }
     else if(e.error==="not-allowed"){ showErr("Mic permission denied. Allow microphone access and retry."); }
+    else if(e.error==="network") showErr("Speech recognition network error — Chrome's speech service is unreachable. Check internet, and on desktop make sure it's real Google Chrome (not Brave/Edge-derivative with shields).");
     else if(e.error!=="aborted") showErr("Recognition error: "+e.error);
   };
   rec.onend = async ()=>{
@@ -277,6 +281,13 @@ function startListening(){
       while(translating || pendingQueue.length){ await new Promise(r=>setTimeout(r,150)); }
       if(!sessionSourceText){ // silence, just relisten same direction
         startListening(); return;
+      }
+      if(translationFailed || !translatedSoFar){
+        // translation failed — stop the loop instead of flipping into nothing
+        convoMode=false;
+        convoBtn.textContent="🗣 Conversation: OFF";convoBtn.classList.remove("on");
+        stopUI();
+        return;
       }
       fetchExtras();
       // wait for TTS to finish, then flip direction and listen again
@@ -330,9 +341,13 @@ async function translateChunk(text){
 "Translate ONLY this next segment, naturally and conversationally. Respond with ONLY the translation text, nothing else:\n\n"+text}]
       })
     });
+    if(!r.ok){
+      const t = await r.text().catch(()=>"");
+      throw new Error("API "+r.status+(t?": "+t.slice(0,160):""));
+    }
     const data = await r.json();
     const out = (data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("").trim();
-    if(!out) throw new Error("empty");
+    if(!out) throw new Error("empty response");
     translatedSoFar += (translatedSoFar?" ":"")+out;
     outText.classList.remove("placeholder");
     outText.textContent = translatedSoFar;
@@ -340,8 +355,9 @@ async function translateChunk(text){
     setStatus(listening?"Listening ("+LANG[activeSrc].label+")…":"Done", listening);
     if(autoSpeak) speak(out, activeDst);
   }catch(e){
-    showErr("Translation failed. Check connection and try again.");
+    showErr("Translation failed — "+(e.message||"connection error"));
     setStatus("Ready");
+    translationFailed=true;
   }
 }
 
@@ -447,6 +463,7 @@ const camBox=$("camBox"), camVideo=$("camVideo"), camOut=$("camOut"), camRomajiE
 let camStream=null, camTimer=null, camBusy=false, lastCamText="";
 $("camBtn").onclick=async ()=>{
   clearErr();
+  if(!keyCheck())return;
   if(listening){listeningStoppedManually=true;try{rec&&rec.stop();}catch(e){};stopUI();}
   try{
     camStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}, audio:false});
@@ -511,6 +528,14 @@ function speak(text, lang){
 }
 if(window.speechSynthesis) speechSynthesis.getVoices();
 if("serviceWorker" in navigator){navigator.serviceWorker.register("sw.js").catch(()=>{});}
+function keyCheck(){
+  const hosted = !location.hostname.includes("claude") && location.protocol.startsWith("http");
+  if(hosted && !$("apiKey").value.trim()){
+    showErr("No API key set. Open ⚙️ Settings below and paste your key from console.anthropic.com — translation cannot work without it on this site.");
+    return false;
+  }
+  return true;
+}
 // persist API key on device so it's entered once
 const savedKey = localStorage.getItem("lt_api_key");
 if(savedKey) $("apiKey").value = savedKey;
