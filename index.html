@@ -101,7 +101,7 @@
 <div class="popup-wrap" id="popups"></div>
 <div class="app">
   <header>
-    <h1>Live Translator <small>v23</small></h1>
+    <h1>Live Translator <small>v24</small></h1>
     <div class="right">
       <button class="theme" id="themeBtn">🌙</button>
       <div class="status" id="status">Ready</div>
@@ -657,6 +657,44 @@ $("camStop").onclick=()=>{
 };
 
 const camTranslationCache={}; // ja text -> en, so still frames cost nothing
+async function visionFallback(c){
+  try{
+    // draw coordinate grid on a copy
+    const gc2=document.createElement("canvas");gc2.width=c.width;gc2.height=c.height;
+    const g=gc2.getContext("2d");g.drawImage(c,0,0);
+    g.strokeStyle="rgba(255,0,0,0.5)";g.lineWidth=1;g.fillStyle="rgba(255,0,0,0.9)";g.font=Math.round(c.height*0.025)+"px sans-serif";
+    for(let i=1;i<10;i++){const gx=c.width*i/10,gy=c.height*i/10;
+      g.beginPath();g.moveTo(gx,0);g.lineTo(gx,c.height);g.stroke();
+      g.beginPath();g.moveTo(0,gy);g.lineTo(c.width,gy);g.stroke();
+      g.fillText((i/10).toFixed(1),gx+2,12);g.fillText((i/10).toFixed(1),2,gy-3);}
+    const b64=gc2.toDataURL("image/jpeg",0.72).split(",")[1];
+    const r=await fetch("https://api.openai.com/v1/chat/completions",{
+      method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+$("oaiKey").value.trim()},
+      body:JSON.stringify({model:"gpt-4o-mini",max_tokens:700,messages:[{role:"user",content:[
+        {type:"image_url",image_url:{url:"data:image/jpeg;base64,"+b64}},
+        {type:"text",text:'Red grid = coordinates (labels 0.1-0.9). Find each block of Japanese text, translate to English, give its box read off the grid. JSON only, no fences: {"blocks":[{"en":"...","x":0.1,"y":0.2,"w":0.3,"h":0.08}]}'}]}]})});
+    if(!r.ok)return;
+    const data=await r.json();
+    if(data.usage)addSpend((data.usage.prompt_tokens||0)*PRICE.chat_in+(data.usage.completion_tokens||0)*PRICE.chat_out);
+    let raw=(data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content||"").trim().replace(/```json|```/g,"").trim();
+    let obj;try{obj=JSON.parse(raw);}catch(e){return;}
+    const blocks=Array.isArray(obj.blocks)?obj.blocks:[];
+    camOverlay.innerHTML="";
+    for(const b of blocks){
+      if(!b.en)continue;
+      const d=document.createElement("div");
+      const x=Math.max(0,Math.min(1,+b.x||0))*100,y=Math.max(0,Math.min(1,+b.y||0))*100;
+      const bw=Math.max(0.06,Math.min(1,+b.w||0.3))*100,bh=Math.max(0.03,Math.min(1,+b.h||0.06))*100;
+      d.style.cssText="position:absolute;left:"+x+"%;top:"+y+"%;width:"+bw+"%;min-height:"+bh+"%;"
+        +"background:rgba(10,12,20,.85);color:#fff;border-radius:5px;padding:1px 5px;"
+        +"display:flex;align-items:center;justify-content:center;text-align:center;font-weight:700;line-height:1.1;"
+        +"font-size:clamp(10px,"+Math.max(1.8,bh*0.5)+"vw,20px);overflow:hidden";
+      d.textContent=b.en;
+      camOverlay.appendChild(d);
+    }
+    camStatus.textContent=blocks.length?blocks.length+" block(s) — approximate positions (stylized text)":"No Japanese text detected";
+  }catch(e){/* silent — next scan retries */}
+}
 async function camScan(){
   if(camBusy||!camStream||!ocrReady)return;
   camBusy=true;camScanCount++;
@@ -669,13 +707,20 @@ async function camScan(){
     const sc=Math.min(1,1280/Math.max(cw,ch));
     c.width=Math.round(cw*sc);c.height=Math.round(ch*sc);
     c.getContext("2d").drawImage(camVideo,cx,cy,cw,ch,0,0,c.width,c.height);
+    // OCR copy: grayscale + contrast boost (reads stylized text better)
+    const oc=document.createElement("canvas");oc.width=c.width;oc.height=c.height;
+    const og=oc.getContext("2d");og.filter="grayscale(1) contrast(1.8) brightness(1.05)";og.drawImage(c,0,0);
 
-    const res=await ocrWorker.recognize(c);
+    const res=await ocrWorker.recognize(oc);
     const lines=(res.data.lines||[]).filter(l=>{
       const t=(l.text||"").trim();
-      return t.length>=1 && l.confidence>35 && /[\u3040-\u30ff\u4e00-\u9fff]/.test(t);
+      return t.length>=1 && l.confidence>25 && /[\u3040-\u30ff\u4e00-\u9fff]/.test(t);
     }).map(l=>({text:l.text.trim().replace(/\s+/g,""),bbox:l.bbox}));
-    if(!lines.length){camStatus.textContent="No Japanese text detected ("+camScanCount+")";camOverlay.innerHTML="";camBusy=false;return;}
+    if(!lines.length){
+      camStatus.textContent="Stylized text — using AI vision ("+camScanCount+")…";
+      await visionFallback(c);
+      camBusy=false;return;
+    }
 
     // translate only lines we haven't seen (batch, one call)
     const unknown=[...new Set(lines.map(l=>l.text))].filter(t=>!(t in camTranslationCache));
