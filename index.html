@@ -101,7 +101,7 @@
 <div class="popup-wrap" id="popups"></div>
 <div class="app">
   <header>
-    <h1>Live Translator <small>v24</small></h1>
+    <h1>Live Translator <small>v25</small></h1>
     <div class="right">
       <button class="theme" id="themeBtn">🌙</button>
       <div class="status" id="status">Ready</div>
@@ -679,6 +679,7 @@ async function visionFallback(c){
     let raw=(data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content||"").trim().replace(/```json|```/g,"").trim();
     let obj;try{obj=JSON.parse(raw);}catch(e){return;}
     const blocks=Array.isArray(obj.blocks)?obj.blocks:[];
+    if(!blocks.length){camStatus.textContent="No Japanese text detected";return;}
     camOverlay.innerHTML="";
     for(const b of blocks){
       if(!b.en)continue;
@@ -712,11 +713,15 @@ async function camScan(){
     const og=oc.getContext("2d");og.filter="grayscale(1) contrast(1.8) brightness(1.05)";og.drawImage(c,0,0);
 
     const res=await ocrWorker.recognize(oc);
-    const lines=(res.data.lines||[]).filter(l=>{
-      const t=(l.text||"").trim();
-      return t.length>=1 && l.confidence>25 && /[\u3040-\u30ff\u4e00-\u9fff]/.test(t);
-    }).map(l=>({text:l.text.trim().replace(/\s+/g,""),bbox:l.bbox}));
-    if(!lines.length){
+    const all=(res.data.lines||[]).map(l=>({text:(l.text||"").trim().replace(/\s+/g,""),conf:l.confidence,bbox:l.bbox}));
+    // strict quality: high confidence, at least 2 Japanese characters, real length
+    const lines=all.filter(l=>{
+      const jaChars=(l.text.match(/[\u3040-\u30ff\u4e00-\u9fff]/g)||[]).length;
+      return l.conf>55 && jaChars>=2 && l.text.length>=2;
+    });
+    const avgConf=lines.length?lines.reduce((a,l)=>a+l.conf,0)/lines.length:0;
+    // if OCR reads poorly (stylized poster), don't show its guesses — use AI vision instead
+    if(lines.length<2 || avgConf<65){
       camStatus.textContent="Stylized text — using AI vision ("+camScanCount+")…";
       await visionFallback(c);
       camBusy=false;return;
@@ -735,7 +740,7 @@ async function camScan(){
       }catch(e){/* keep boxes without translation this round */}
     }
 
-    camOverlay.innerHTML="";
+    const newOverlay=document.createDocumentFragment();
     const g2=c.getContext("2d");
     for(const l of lines){
       const en=camTranslationCache[l.text];
@@ -761,7 +766,7 @@ async function camScan(){
         +"display:flex;align-items:center;justify-content:center;text-align:center;"
         +"font-weight:800;line-height:1.05;overflow:hidden;white-space:nowrap";
       d.textContent=en;
-      camOverlay.appendChild(d);
+      newOverlay.appendChild(d);
       // fit text to the box: shrink until it fits
       requestAnimationFrame(()=>{
         let fs=Math.max(9,d.clientHeight*0.72);
@@ -769,6 +774,7 @@ async function camScan(){
         while(fs>8&&(d.scrollWidth>d.clientWidth||d.scrollHeight>d.clientHeight)){fs-=1;d.style.fontSize=fs+"px";}
       });
     }
+    if(newOverlay.childNodes.length){camOverlay.innerHTML="";camOverlay.appendChild(newOverlay);}
     camStatus.textContent=lines.length+" line(s) — exact positions";
   }catch(e){camStatus.textContent="Camera error: "+(e.message||"unknown");}
   camBusy=false;
