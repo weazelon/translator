@@ -100,7 +100,7 @@
 <div class="popup-wrap" id="popups"></div>
 <div class="app">
   <header>
-    <h1>Live Translator <small>v13</small></h1>
+    <h1>Live Translator <small>v14</small></h1>
     <div class="right">
       <button class="theme" id="themeBtn">🌙</button>
       <div class="status" id="status">Ready</div>
@@ -504,14 +504,14 @@ async function simulLoop(){
 }
 function recordSegment(ms){
   return new Promise(res=>{
-    let peak=0;
+    let peak=0, loudFrames=0;
     const mime=MediaRecorder.isTypeSupported("audio/webm;codecs=opus")?"audio/webm;codecs=opus":"";
     simulRecorder=new MediaRecorder(simulStream,mime?{mimeType:mime}:{});
     const chunks=[];
     simulRecorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};
-    simulRecorder.onstop=()=>res(peak>18?new Blob(chunks,{type:mime||"audio/webm"}):null);
+    simulRecorder.onstop=()=>res((peak>26&&loudFrames>=3)?new Blob(chunks,{type:mime||"audio/webm"}):null);
     simulRecorder.start();
-    const iv=setInterval(()=>{const l=micLevel();if(l>peak)peak=l;},120);
+    const iv=setInterval(()=>{const l=micLevel();if(l>peak)peak=l;if(l>22)loudFrames++;},120);
     setTimeout(()=>{clearInterval(iv);try{simulRecorder.stop();}catch(e){res(null);}},ms);
   });
 }
@@ -529,13 +529,17 @@ async function processSegment(blob){
     const fd=new FormData();
     fd.append("file",blob,"seg.webm");
     fd.append("model","gpt-4o-mini-transcribe");
-    fd.append("prompt","Conversation mixing Japanese, English and Hebrew. The Japanese speaker may have a foreign accent. Write Japanese in Japanese script, e.g. 元気ですか、ありがとう、こんにちは.");
+    fd.append("prompt","Conversation mixing Japanese, English and Hebrew. Some speakers have a foreign accent. Write Japanese in Japanese script. If the audio contains no clear speech, return nothing.");
     const wr=await fetch("https://api.openai.com/v1/audio/transcriptions",{
       method:"POST",headers:{"Authorization":"Bearer "+$("oaiKey").value.trim()},body:fd});
     if(!wr.ok){const t=await wr.text().catch(()=>"");showErr("Transcribe API "+wr.status+(t?" — "+t.slice(0,120):""));return;}
     const w=await wr.json();
-    const text=(w.text||"").trim();
+    let text=(w.text||"").trim();
     if(!text||text.length<2)return;
+    // filter common transcription hallucinations on quiet/noisy segments
+    const junk=["thank you.","thank you","thanks for watching","ご視聴ありがとうございました","ありがとうございました。","元気ですか","元気ですか?","元気ですか？","こんにちは","字幕","subtitles"];
+    const tl=text.toLowerCase().replace(/[。、!?！？\s]+$/,"");
+    if(junk.some(j=>tl===j.toLowerCase().replace(/[。、!?！？\s]+$/,"")))return;
     if(isDupSegment(text))return; // tail of the previous utterance caught by the next segment
     // detect language from the script of the text itself — more reliable than the model's guess
     let segSrc = /[\u3040-\u30ff\u4e00-\u9fff]/.test(text) ? "ja"
