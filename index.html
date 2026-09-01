@@ -101,7 +101,7 @@
 <div class="popup-wrap" id="popups"></div>
 <div class="app">
   <header>
-    <h1>Live Translator <small>v25</small></h1>
+    <h1>Live Translator <small>v26</small></h1>
     <div class="right">
       <button class="theme" id="themeBtn">🌙</button>
       <div class="status" id="status">Ready</div>
@@ -646,7 +646,7 @@ $("camBtn").onclick=async()=>{
   camVideo.srcObject=camStream;
   camBox.style.display="";
   camOverlay.innerHTML="";
-  camScanCount=0;
+  camScanCount=0;frozen=false;lastFrameSig=null;
   initOcr();
   camTimer=setInterval(camScan,3500);
 };
@@ -657,6 +657,16 @@ $("camStop").onclick=()=>{
 };
 
 const camTranslationCache={}; // ja text -> en, so still frames cost nothing
+let lastFrameSig=null,frozen=false;
+function frameSignature(video,cw,ch,cx,cy){
+  const t=document.createElement("canvas");t.width=16;t.height=16;
+  t.getContext("2d").drawImage(video,cx,cy,cw,ch,0,0,16,16);
+  const d=t.getContext("2d").getImageData(0,0,16,16).data;
+  const sig=new Array(256);
+  for(let i=0;i<256;i++)sig[i]=(d[i*4]*0.299+d[i*4+1]*0.587+d[i*4+2]*0.114)|0;
+  return sig;
+}
+function frameDiff(a,b){if(!a||!b)return 1;let s=0;for(let i=0;i<256;i++)s+=Math.abs(a[i]-b[i]);return s/(256*255);}
 async function visionFallback(c){
   try{
     // draw coordinate grid on a copy
@@ -672,13 +682,22 @@ async function visionFallback(c){
       method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+$("oaiKey").value.trim()},
       body:JSON.stringify({model:"gpt-4o-mini",max_tokens:700,messages:[{role:"user",content:[
         {type:"image_url",image_url:{url:"data:image/jpeg;base64,"+b64}},
-        {type:"text",text:'Red grid = coordinates (labels 0.1-0.9). Find each block of Japanese text, translate to English, give its box read off the grid. JSON only, no fences: {"blocks":[{"en":"...","x":0.1,"y":0.2,"w":0.3,"h":0.08}]}'}]}]})});
+        {type:"text",text:'Red grid = coordinates (labels 0.1-0.9). Find each block of Japanese text and TRANSLATE it into ENGLISH. The "en" field must contain ONLY English words — never Japanese characters. Give each box read off the grid. JSON only, no fences: {"blocks":[{"en":"English translation","x":0.1,"y":0.2,"w":0.3,"h":0.08}]}'}]}]})});
     if(!r.ok)return;
     const data=await r.json();
     if(data.usage)addSpend((data.usage.prompt_tokens||0)*PRICE.chat_in+(data.usage.completion_tokens||0)*PRICE.chat_out);
     let raw=(data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content||"").trim().replace(/```json|```/g,"").trim();
     let obj;try{obj=JSON.parse(raw);}catch(e){return;}
-    const blocks=Array.isArray(obj.blocks)?obj.blocks:[];
+    let blocks=Array.isArray(obj.blocks)?obj.blocks:[];
+    // repair: if "en" still contains Japanese, translate those in one batch
+    const bad=blocks.filter(b=>/[\u3040-\u30ff\u4e00-\u9fff]/.test(b.en||""));
+    if(bad.length){
+      try{
+        let raw2=await aiChat('Translate each Japanese string to short natural English. JSON array of strings, same order, no fences:\n'+JSON.stringify(bad.map(b=>b.en)),400);
+        const arr2=JSON.parse(raw2.replace(/```json|```/g,"").trim());
+        bad.forEach((b,k)=>{if(Array.isArray(arr2)&&arr2[k])b.en=arr2[k];});
+      }catch(e){blocks=blocks.filter(b=>!/[\u3040-\u30ff\u4e00-\u9fff]/.test(b.en||""));}
+    }
     if(!blocks.length){camStatus.textContent="No Japanese text detected";return;}
     camOverlay.innerHTML="";
     for(const b of blocks){
@@ -693,11 +712,21 @@ async function visionFallback(c){
       d.textContent=b.en;
       camOverlay.appendChild(d);
     }
-    camStatus.textContent=blocks.length?blocks.length+" block(s) — approximate positions (stylized text)":"No Japanese text detected";
+    frozen=blocks.length>0;
+    camStatus.textContent=blocks.length?blocks.length+" block(s) — approximate (holding until you move)":"No Japanese text detected";
   }catch(e){/* silent — next scan retries */}
 }
 async function camScan(){
   if(camBusy||!camStream||!ocrReady)return;
+  const w0=camVideo.videoWidth,h0=camVideo.videoHeight;
+  if(w0){
+    const cw0=w0/camZoomF,ch0=h0/camZoomF;
+    const sig=frameSignature(camVideo,cw0,ch0,(w0-cw0)/2,(h0-ch0)/2);
+    const diff=frameDiff(lastFrameSig,sig);
+    if(frozen&&diff<0.06)return;      // same scene + result already shown: do nothing
+    if(diff>=0.06)frozen=false;       // scene changed: rescan
+    lastFrameSig=sig;
+  }
   camBusy=true;camScanCount++;
   camStatus.textContent="Scanning… ("+camScanCount+")";
   try{
@@ -774,8 +803,8 @@ async function camScan(){
         while(fs>8&&(d.scrollWidth>d.clientWidth||d.scrollHeight>d.clientHeight)){fs-=1;d.style.fontSize=fs+"px";}
       });
     }
-    if(newOverlay.childNodes.length){camOverlay.innerHTML="";camOverlay.appendChild(newOverlay);}
-    camStatus.textContent=lines.length+" line(s) — exact positions";
+    if(newOverlay.childNodes.length){camOverlay.innerHTML="";camOverlay.appendChild(newOverlay);frozen=true;}
+    camStatus.textContent=lines.length+" line(s) — exact positions (holding)";
   }catch(e){camStatus.textContent="Camera error: "+(e.message||"unknown");}
   camBusy=false;
 }
