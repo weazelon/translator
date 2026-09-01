@@ -136,9 +136,25 @@
 <div class="popup-wrap" id="popups"></div>
 <div class="app">
   <header>
-    <h1>Live Translator <span style="font-size:.7rem;color:var(--muted)">v7</span></h1>
+    <h1>Live Translator <span style="font-size:.7rem;color:var(--muted)">v8</span></h1>
     <div style="display:flex;gap:10px;align-items:center"><button class="theme" id="themeBtn" title="Theme">🌙</button><div class="status" id="status">Ready</div></div>
   </header>
+
+  <div class="box" id="histBox" style="display:none">
+    <div class="label">Conversation</div>
+    <div id="histList"></div>
+  </div>
+
+  <div class="box" id="outBox">
+    <div class="label">Translation</div>
+    <div class="text placeholder" id="outText">…</div>
+    <div class="romaji" id="outRomaji"></div>
+  </div>
+
+  <div class="box" id="inBox">
+    <div class="label" id="inLabel">Heard</div>
+    <div class="text placeholder" id="inText">Tap the mic and speak…</div>
+  </div>
 
   <div class="pair">
     <select id="srcLang">
@@ -154,21 +170,11 @@
     </select>
   </div>
 
-  <div class="box" id="inBox">
-    <div class="label" id="inLabel">Heard</div>
-    <div class="text placeholder" id="inText">Tap the mic and speak…</div>
-  </div>
+  
 
-  <div class="box" id="outBox">
-    <div class="label">Translation</div>
-    <div class="text placeholder" id="outText">…</div>
-    <div class="romaji" id="outRomaji"></div>
-  </div>
+  
 
-  <div class="box" id="histBox" style="display:none">
-    <div class="label">Conversation</div>
-    <div id="histList"></div>
-  </div>
+  
 
   <div class="box" id="repliesBox" style="display:none">
     <div class="label">Suggested replies</div>
@@ -312,9 +318,8 @@ function pushTurnToHistory(){
   d.innerHTML='<div class="src">'+escapeHtml(sessionSourceText)+'</div>'
     +'<div class="dst">'+escapeHtml(translatedSoFar)+'</div>'
     +'<div class="ro"></div>';
-  histList.appendChild(d);
+  histList.prepend(d);
   lastTurnEl=d;
-  d.scrollIntoView({block:"nearest"});
 }
 let displayDirty=false; // true = boxes still show the previous turn
 function resetSession(){
@@ -747,8 +752,7 @@ async function processSegment(blob){
     d.innerHTML='<div class="src">'+escapeHtml(text)+'</div>'
       +'<div class="dst">'+escapeHtml(obj.t||"")+'</div>'
       +(obj.r?'<div class="ro">'+escapeHtml(obj.r)+'</div>':'');
-    histList.appendChild(d);
-    d.scrollIntoView({block:"nearest"});
+    histList.prepend(d);
   }catch(e){ showErr("Simultaneous error: "+(e.message||"unknown")); }
 }
 // =============================================================================
