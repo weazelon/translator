@@ -98,7 +98,7 @@
 <div class="popup-wrap" id="popups"></div>
 <div class="app">
   <header>
-    <h1>Live Translator <small>v9</small></h1>
+    <h1>Live Translator <small>v11</small></h1>
     <div class="right">
       <button class="theme" id="themeBtn">🌙</button>
       <div class="status" id="status">Ready</div>
@@ -517,30 +517,42 @@ async function processSegment(blob){
   try{
     const fd=new FormData();
     fd.append("file",blob,"seg.webm");
-    fd.append("model","whisper-1");
-    fd.append("response_format","verbose_json");
+    fd.append("model","gpt-4o-mini-transcribe");
+    fd.append("prompt","Conversation mixing Japanese, English and Hebrew. The Japanese speaker may have a foreign accent. Write Japanese in Japanese script, e.g. 元気ですか、ありがとう、こんにちは.");
     const wr=await fetch("https://api.openai.com/v1/audio/transcriptions",{
       method:"POST",headers:{"Authorization":"Bearer "+$("oaiKey").value.trim()},body:fd});
-    if(!wr.ok){const t=await wr.text().catch(()=>"");showErr("Whisper API "+wr.status+(t?" — "+t.slice(0,120):""));return;}
+    if(!wr.ok){const t=await wr.text().catch(()=>"");showErr("Transcribe API "+wr.status+(t?" — "+t.slice(0,120):""));return;}
     const w=await wr.json();
-    const text=(w.text||"").trim(),lang=(w.language||"").toLowerCase();
+    const text=(w.text||"").trim();
     if(!text||text.length<2)return;
-    let segSrc=lang.startsWith("ja")||lang==="japanese"?"ja":lang.startsWith("he")||lang==="hebrew"?"he":lang.startsWith("en")||lang==="english"?"en":null;
-    if(!segSrc)return;
+    // detect language from the script of the text itself — more reliable than the model's guess
+    let segSrc = /[\u3040-\u30ff\u4e00-\u9fff]/.test(text) ? "ja"
+               : /[\u0590-\u05ff]/.test(text) ? "he" : "en";
     const segDst=segSrc==="en"?"ja":"en";
     let raw;
     try{
       raw=await aiChat(
 "A person just said this in "+LANG[segSrc].name+' during a live conversation: "'+text.replace(/"/g,"'")+'"\n'+
 "Task: translate it into "+LANG[segDst].name+".\n"+
-'Respond ONLY with valid JSON, no fences, exactly: {"t":"the translation written in '+LANG[segDst].name+'","r":"romaji of the Japanese side (the original if it was Japanese, the translation if the translation is Japanese)"}\n'+
-'Rules: "t" MUST be in '+LANG[segDst].name+'. If '+LANG[segDst].name+' is English, "t" must contain no Japanese characters and no romaji — English words only.',500);
+'Respond ONLY with valid JSON, no fences, exactly: {"t":"the translation written in '+LANG[segDst].name+'","r":"romaji (Latin letters ONLY, e.g. konnichiwa) of the Japanese side"}\n'+
+'Rules: "t" MUST be in '+LANG[segDst].name+'. If '+LANG[segDst].name+' is English, "t" must contain no Japanese characters and no romaji — English words only. "r" must contain ONLY Latin letters (Hepburn romaji), never kana or kanji.',500);
     }catch(e){showErr("Translation error — "+(e.message||""));return;}
     raw=raw.replace(/```json|```/g,"").trim();
     let obj;try{obj=JSON.parse(raw);}catch(e){obj={t:raw,r:""};}
     // safety: if target is English but "t" contains Japanese characters, retry once plainly
     if(segDst==="en"&&/[\u3040-\u30ff\u4e00-\u9fff]/.test(obj.t||"")){
       try{obj.t=await aiChat('Translate to natural English, reply with the English translation only: '+text,300);}catch(e){}
+    }
+    // safety: if "r" is not actually romaji, fetch it properly
+    const jaSide = segSrc==="ja" ? text : (segDst==="ja" ? obj.t : "");
+    if(jaSide && (!obj.r || /[\u3040-\u30ff\u4e00-\u9fff]/.test(obj.r))){
+      try{obj.r=await aiChat('Romanize this Japanese into Hepburn romaji. Reply with the romaji only, Latin letters: '+jaSide,200);}catch(e){obj.r="";}
+    }
+    // safety: if "r" contains kana/kanji instead of romaji, convert it properly
+    if(/[\u3040-\u30ff\u4e00-\u9fff]/.test(obj.r||"")){
+      const jaSide = segSrc==="ja" ? text : (obj.t||"");
+      try{obj.r=await aiChat('Convert this Japanese to Hepburn romaji. Reply with Latin letters only, nothing else: '+jaSide,200);}catch(e){obj.r="";}
+      if(/[\u3040-\u30ff\u4e00-\u9fff]/.test(obj.r||""))obj.r="";
     }
     pushTurn(segSrc==="en"?"a":"b",text,obj.t||"",obj.r||"");
   }catch(e){showErr("Simultaneous error: "+(e.message||"unknown"));}
