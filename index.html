@@ -123,7 +123,7 @@
 <body>
 <div class="app">
   <header>
-    <h1>Live Translator</h1>
+    <h1>Live Translator <span style="font-size:.7rem;color:var(--muted)">v6</span></h1>
     <div style="display:flex;gap:10px;align-items:center"><button class="theme" id="themeBtn" title="Theme">🌙</button><div class="status" id="status">Ready</div></div>
   </header>
 
@@ -167,6 +167,7 @@
     <button class="mic mic-b" id="micBtnB"><span class="micIcon">🎤</span><span class="micLbl" id="micLblB">JA → EN</span></button>
   </div>
   <div class="controls">
+    <button class="side" id="simulBtn">⚡ Simultaneous: OFF</button>
     <button class="side" id="convoBtn">🗣 Conversation: OFF</button>
     <button class="side" id="autoSpeak">🔊 Auto-speak: ON</button>
     <button class="side" id="camBtn">📷 Camera</button>
@@ -185,8 +186,8 @@
   <div class="hint" id="hint">Works best in Chrome / Android Chrome. Speech recognition needs mic permission.</div>
 
   <details class="box" style="min-height:0">
-    <summary class="label" style="cursor:pointer">⚙️ Settings — API key (for standalone use outside Claude)</summary>
-    <input type="password" id="apiKey" placeholder="sk-ant-..." style="margin-top:8px;padding:10px;border-radius:10px;border:1.5px solid var(--line);background:var(--panel);color:var(--ink);font-size:.95rem;width:100%">
+    <summary class="label" style="cursor:pointer">⚙️ Settings — OpenAI API key</summary>
+    <input type="password" id="oaiKey" placeholder="OpenAI API key: sk-..." style="margin-top:8px;padding:10px;border-radius:10px;border:1.5px solid var(--line);background:var(--panel);color:var(--ink);font-size:.95rem;width:100%">
     <div class="hint" style="text-align:start;margin-top:6px">Only needed when this page is hosted outside the Claude app (e.g. GitHub Pages). The key stays in this browser tab only.</div>
   </details>
   <div class="err" id="err"></div>
@@ -206,6 +207,7 @@ const srcSel=$("srcLang"), dstSel=$("dstLang"), micBtn=$("micBtn"),
 
 let listening=false, autoSpeak=true, continuous=false, rec=null, busy=false;
 let convoMode=false;
+let turnTimer=null;
 let translationFailed=false;
 let activeSrc="en", activeDst="ja";
 
@@ -247,6 +249,7 @@ let extrasTimer=null;
 
 const histBox=$("histBox"), histList=$("histList");
 let lastRomajiShown="";
+let lastTurnEl=null;
 function pushTurnToHistory(){
   if(!sessionSourceText || !translatedSoFar) return;
   histBox.style.display="";
@@ -254,17 +257,23 @@ function pushTurnToHistory(){
   d.className="turn "+(activeBtn===micBtnB?"b":"a");
   d.innerHTML='<div class="src">'+escapeHtml(sessionSourceText)+'</div>'
     +'<div class="dst">'+escapeHtml(translatedSoFar)+'</div>'
-    +(lastRomajiShown?'<div class="ro">'+escapeHtml(lastRomajiShown)+'</div>':'');
+    +'<div class="ro"></div>';
   histList.appendChild(d);
-  histList.parentElement.scrollTop=1e9;
-  lastRomajiShown="";
+  lastTurnEl=d;
+  d.scrollIntoView({block:"nearest"});
 }
+let displayDirty=false; // true = boxes still show the previous turn
 function resetSession(){
   translationFailed=false;
   translatedSoFar="";pendingQueue=[];sessionSourceText="";
+  displayDirty=true; // keep previous turn on screen until new speech arrives
+}
+function clearDisplayIfDirty(){
+  if(!displayDirty) return;
+  displayDirty=false;
   outText.textContent="…";outText.classList.add("placeholder");
   outRomaji.textContent="";repliesBox.style.display="none";repliesList.innerHTML="";
-  inText.textContent="";inText.classList.remove("placeholder");
+  inText.textContent="";
 }
 
 function startListening(){
@@ -274,7 +283,7 @@ function startListening(){
   rec = new SR();
   rec.lang = LANG[activeSrc].bcp;
   rec.interimResults = true;
-  rec.continuous = !convoMode;
+  rec.continuous = true;
   let enqueuedLen = 0;
 
   // append b to a, trimming any overlapping repetition (Android Chrome re-sends earlier speech)
@@ -306,7 +315,12 @@ function startListening(){
       const newPart = finals.slice(enqueuedLen).trim();
       enqueuedLen = finals.length;
       if(newPart) enqueueChunk(newPart);
+      if(convoMode){ // end the turn after ~1.5s of silence instead of waiting for the mic to shut off
+        if(turnTimer) clearTimeout(turnTimer);
+        turnTimer = setTimeout(()=>{ try{rec.stop();}catch(e){} }, 1500);
+      }
     }
+    if(finals || interim) clearDisplayIfDirty();
     const shown = interim ? mergeOverlap(finals,interim) : finals;
     inText.classList.remove("placeholder");
     inText.textContent = shown;
@@ -333,10 +347,9 @@ function startListening(){
         stopUI();
         return;
       }
+      pushTurnToHistory();     // record the turn right away so it never disappears
       fetchExtras();
-      // wait for TTS to finish, then record the turn, flip direction and listen again
-      await waitForSpeech();
-      pushTurnToHistory();
+      await waitForSpeech();   // let the spoken translation finish (instant if Auto-speak is off)
       [activeSrc,activeDst]=[activeDst,activeSrc];
       activeBtn = (activeBtn===micBtn)?micBtnB:micBtn;
       startListening();
@@ -374,24 +387,10 @@ async function translateChunk(text){
   setStatus("Translating…",true);
   const src=LANG[activeSrc].name, dst=LANG[activeDst].name;
   try{
-    const r = await fetch("https://api.anthropic.com/v1/messages",{
-      method:"POST",
-      headers:apiHeaders(),
-      body:JSON.stringify({
-        model:"claude-sonnet-4-6",
-        max_tokens:1000,
-        messages:[{role:"user",content:
+    const out = await aiChat(
 "You are translating a live spoken conversation from "+src+" to "+dst+". "+
 (translatedSoFar?("Translation so far (for context, do not repeat it): "+translatedSoFar+"\n\n"):"")+
-"Translate ONLY this next segment, naturally and conversationally. Respond with ONLY the translation text, nothing else:\n\n"+text}]
-      })
-    });
-    if(!r.ok){
-      const t = await r.text().catch(()=>"");
-      throw new Error("API "+r.status+(t?": "+t.slice(0,160):""));
-    }
-    const data = await r.json();
-    const out = (data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("").trim();
+"Translate ONLY this next segment, naturally and conversationally. Respond with ONLY the translation text, nothing else:\n\n"+text, 800);
     if(!out) throw new Error("empty response");
     translatedSoFar += (translatedSoFar?" ":"")+out;
     outText.classList.remove("placeholder");
@@ -413,22 +412,12 @@ async function fetchExtras(){
   const userLang = activeSrc==="ja" ? dst : src;
   const jaText = activeDst==="ja" ? translatedSoFar : sessionSourceText;
   try{
-    const r = await fetch("https://api.anthropic.com/v1/messages",{
-      method:"POST",
-      headers:apiHeaders(),
-      body:JSON.stringify({
-        model:"claude-sonnet-4-6",
-        max_tokens:1500,
-        messages:[{role:"user",content:
+    let raw = await aiChat(
 "Japanese text from a live conversation:\n\n"+jaText+"\n\nRespond ONLY with valid JSON, no markdown fences:\n"+
-'{"romaji":"romaji of the Japanese text","replies":[{"ja":"short natural Japanese reply","romaji":"its romaji","meaning":"its meaning in '+userLang+'"},{...},{...}]}'}]
-      })
-    });
-    const data = await r.json();
-    let raw = (data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("").trim();
+'{"romaji":"romaji of the Japanese text","replies":[{"ja":"short natural Japanese reply","romaji":"its romaji","meaning":"its meaning in '+userLang+'"},{...},{...}]}', 1200);
     raw = raw.replace(/```json|```/g,"").trim();
     const obj = JSON.parse(raw);
-    if(obj.romaji){outRomaji.textContent = obj.romaji; lastRomajiShown=obj.romaji;}
+    if(obj.romaji){outRomaji.textContent = obj.romaji; if(lastTurnEl){const ro=lastTurnEl.querySelector(".ro"); if(ro && !ro.textContent) ro.textContent=obj.romaji;}}
     if(Array.isArray(obj.replies) && obj.replies.length){
       repliesBox.style.display="";repliesList.innerHTML="";
       const userDir = userLang==="Hebrew"?"rtl":"ltr";
@@ -448,11 +437,19 @@ async function fetchExtras(){
 
 function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
 
-function apiHeaders(){
-  const h={"Content-Type":"application/json"};
-  const k=$("apiKey").value.trim();
-  if(k){h["x-api-key"]=k;h["anthropic-version"]="2023-06-01";h["anthropic-dangerous-direct-browser-access"]="true";}
-  return h;
+async function aiChat(userContent, maxTokens){
+  const r = await fetch("https://api.openai.com/v1/chat/completions",{
+    method:"POST",
+    headers:{"Content-Type":"application/json","Authorization":"Bearer "+$("oaiKey").value.trim()},
+    body:JSON.stringify({model:"gpt-4o-mini",max_tokens:maxTokens||800,
+      messages:[{role:"user",content:userContent}]})
+  });
+  if(!r.ok){
+    const t=await r.text().catch(()=>"");
+    throw new Error("API "+r.status+(t?": "+t.slice(0,160):""));
+  }
+  const data=await r.json();
+  return (data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content||"").trim();
 }
 
 const micBtnB=$("micBtnB");
@@ -539,12 +536,12 @@ async function captureAndTranslate(){
     c.width=Math.round(w*scale); c.height=Math.round(h*scale);
     c.getContext("2d").drawImage(camVideo,0,0,c.width,c.height);
     const b64 = c.toDataURL("image/jpeg",0.7).split(",")[1];
-    const r = await fetch("https://api.anthropic.com/v1/messages",{
-      method:"POST",headers:apiHeaders(),
+    const r = await fetch("https://api.openai.com/v1/chat/completions",{
+      method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+$("oaiKey").value.trim()},
       body:JSON.stringify({
-        model:"claude-sonnet-4-6",max_tokens:1000,
+        model:"gpt-4o-mini",max_tokens:800,
         messages:[{role:"user",content:[
-          {type:"image",source:{type:"base64",media_type:"image/jpeg",data:b64}},
+          {type:"image_url",image_url:{url:"data:image/jpeg;base64,"+b64}},
           {type:"text",text:'Extract any Japanese text visible in this image and translate it to English. Respond ONLY with valid JSON, no markdown fences: {"ja":"the Japanese text found (empty string if none)","romaji":"its romaji","en":"English translation"}. If no Japanese text is clearly readable, return {"ja":"","romaji":"","en":""}.'}
         ]}]
       })
@@ -556,7 +553,7 @@ async function captureAndTranslate(){
       camBusy=false;return;
     }
     const data = await r.json();
-    let raw=(data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("").trim().replace(/```json|```/g,"").trim();
+    let raw=(data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content||"").trim().replace(/```json|```/g,"").trim();
     let obj;
     try{ obj = JSON.parse(raw); }
     catch(pe){
@@ -590,20 +587,130 @@ function speak(text, lang){
   u.rate = 1.0;
   speechSynthesis.speak(u);
 }
+// ================= SIMULTANEOUS MODE (Whisper auto-language) =================
+const simulBtn=$("simulBtn");
+let simulOn=false, simulStream=null, simulRecorder=null, simulLoopActive=false;
+let audioCtx=null, analyser=null, levelData=null;
+
+simulBtn.onclick=async ()=>{
+  if(simulOn){ stopSimul(); return; }
+  clearErr();
+  if(!keyCheck()) return;
+  if(listening){listeningStoppedManually=true;try{rec&&rec.stop();}catch(e){};stopUI();}
+  if(convoMode){convoMode=false;convoBtn.textContent="🗣 Conversation: OFF";convoBtn.classList.remove("on");}
+  try{
+    simulStream = await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});
+  }catch(e){ showErr("Mic permission denied."); return; }
+  audioCtx = new (window.AudioContext||window.webkitAudioContext)();
+  const srcNode = audioCtx.createMediaStreamSource(simulStream);
+  analyser = audioCtx.createAnalyser(); analyser.fftSize=512;
+  levelData = new Uint8Array(analyser.frequencyBinCount);
+  srcNode.connect(analyser);
+  simulOn=true; simulLoopActive=true;
+  simulBtn.textContent="⚡ Simultaneous: ON"; simulBtn.classList.add("on");
+  setStatus("Simultaneous — listening to both languages…",true);
+  histBox.style.display="";
+  simulLoop();
+};
+
+function stopSimul(){
+  simulOn=false; simulLoopActive=false;
+  try{simulRecorder && simulRecorder.state!=="inactive" && simulRecorder.stop();}catch(e){}
+  if(simulStream){simulStream.getTracks().forEach(t=>t.stop());simulStream=null;}
+  if(audioCtx){audioCtx.close();audioCtx=null;}
+  simulBtn.textContent="⚡ Simultaneous: OFF"; simulBtn.classList.remove("on");
+  setStatus("Ready");
+}
+
+function micLevel(){
+  analyser.getByteFrequencyData(levelData);
+  let sum=0;for(let i=0;i<levelData.length;i++)sum+=levelData[i];
+  return sum/levelData.length; // ~0 silence, higher = speech
+}
+
+async function simulLoop(){
+  // record in ~4s segments; skip silent ones; each segment is a standalone file for Whisper
+  while(simulLoopActive){
+    const blob = await recordSegment(4000);
+    if(!simulLoopActive) break;
+    if(blob && blob.size>4000) processSegment(blob); // fire and forget — keeps recording while transcribing
+  }
+}
+
+function recordSegment(ms){
+  return new Promise(res=>{
+    let peak=0;
+    const mime = MediaRecorder.isTypeSupported("audio/webm;codecs=opus") ? "audio/webm;codecs=opus" : "";
+    simulRecorder = new MediaRecorder(simulStream, mime?{mimeType:mime}:{});
+    const chunks=[];
+    simulRecorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};
+    simulRecorder.onstop=()=>res(peak>18 ? new Blob(chunks,{type:mime||"audio/webm"}) : null);
+    simulRecorder.start();
+    const iv=setInterval(()=>{const l=micLevel();if(l>peak)peak=l;},120);
+    setTimeout(()=>{clearInterval(iv);try{simulRecorder.stop();}catch(e){res(null);}},ms);
+  });
+}
+
+async function processSegment(blob){
+  try{
+    const fd=new FormData();
+    fd.append("file", blob, "seg.webm");
+    fd.append("model","whisper-1");
+    fd.append("response_format","verbose_json");
+    const wr = await fetch("https://api.openai.com/v1/audio/transcriptions",{
+      method:"POST",
+      headers:{"Authorization":"Bearer "+$("oaiKey").value.trim()},
+      body:fd
+    });
+    if(!wr.ok){
+      const t=await wr.text().catch(()=>"");
+      showErr("Whisper error "+wr.status+(t?" — "+t.slice(0,120):""));
+      return;
+    }
+    const w = await wr.json();
+    const text=(w.text||"").trim();
+    const lang=(w.language||"").toLowerCase();
+    if(!text || text.length<2) return;
+    // map whisper language to our pair; ignore anything that is not en/ja/he
+    let segSrc = lang.startsWith("ja")||lang==="japanese" ? "ja"
+               : lang.startsWith("he")||lang==="hebrew" ? "he"
+               : lang.startsWith("en")||lang==="english" ? "en" : null;
+    if(!segSrc) return;
+    const segDst = segSrc==="en" ? "ja" : "en"; // English → Japanese, anything else → English
+    // one Claude call: translation + romaji together
+    let raw;
+    try{
+      raw = await aiChat(
+'Live conversation segment in '+LANG[segSrc].name+': "'+text.replace(/"/g,"'")+'"\n'+
+'Translate to '+LANG[segDst].name+'. Respond ONLY with valid JSON, no fences: {"t":"translation","r":"romaji of whichever side is Japanese, empty if neither"}', 600);
+    }catch(e){showErr("Translation error — "+(e.message||""));return;}
+    raw = raw.replace(/```json|```/g,"").trim();
+    let obj; try{obj=JSON.parse(raw);}catch(e){obj={t:raw,r:""};}
+    // append to conversation history
+    histBox.style.display="";
+    const d=document.createElement("div");
+    d.className="turn "+(segSrc==="en"?"a":"b");
+    d.innerHTML='<div class="src">'+escapeHtml(text)+'</div>'
+      +'<div class="dst">'+escapeHtml(obj.t||"")+'</div>'
+      +(obj.r?'<div class="ro">'+escapeHtml(obj.r)+'</div>':'');
+    histList.appendChild(d);
+    d.scrollIntoView({block:"nearest"});
+  }catch(e){ showErr("Simultaneous error: "+(e.message||"unknown")); }
+}
+// =============================================================================
 if(window.speechSynthesis) speechSynthesis.getVoices();
 if("serviceWorker" in navigator){navigator.serviceWorker.register("sw.js").catch(()=>{});}
 function keyCheck(){
-  const hosted = !location.hostname.includes("claude") && location.protocol.startsWith("http");
-  if(hosted && !$("apiKey").value.trim()){
-    showErr("No API key set. Open ⚙️ Settings below and paste your key from console.anthropic.com — translation cannot work without it on this site.");
+  if(!$("oaiKey").value.trim()){
+    showErr("No API key set. Open ⚙️ Settings below and paste your OpenAI key (platform.openai.com) — translation cannot work without it.");
     return false;
   }
   return true;
 }
 // persist API key on device so it's entered once
-const savedKey = localStorage.getItem("lt_api_key");
-if(savedKey) $("apiKey").value = savedKey;
-$("apiKey").addEventListener("change",()=>localStorage.setItem("lt_api_key", $("apiKey").value.trim()));
+const savedOai = localStorage.getItem("lt_oai_key");
+if(savedOai) $("oaiKey").value = savedOai;
+$("oaiKey").addEventListener("change",()=>localStorage.setItem("lt_oai_key", $("oaiKey").value.trim()));
 </script>
 </body>
 </html>
