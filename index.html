@@ -1,0 +1,520 @@
+<!DOCTYPE html>
+<html lang="he">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#12151d">
+<link rel="apple-touch-icon" href="icon-192.png">
+<title>Live Translator</title>
+<style>
+  :root{
+    --ink:#1c2230;
+    --paper:#eef1f6;
+    --panel:#ffffff;
+    --accent:#2456d6;
+    --accent-soft:#dbe5fb;
+    --live:#d6244e;
+    --ok:#1a8a5c;
+    --line:#c7cedd;
+    --muted:#5a6172;
+    --reply-bg:#fafbfe;
+    --err-bg:#fdecef;--err-line:#f3b8c6;--err-ink:#8f1735;
+  }
+  body.dark{
+    --ink:#e8ebf4;
+    --paper:#12151d;
+    --panel:#1c2130;
+    --accent:#6f96ff;
+    --accent-soft:#26304a;
+    --live:#ff5c82;
+    --ok:#4cd396;
+    --line:#333b52;
+    --muted:#9aa2b8;
+    --reply-bg:#171c29;
+    --err-bg:#3a1620;--err-line:#6d2436;--err-ink:#ffb3c2;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{
+    font-family:"Segoe UI","Heebo","Hiragino Sans",Arial,sans-serif;
+    background:var(--paper);
+    color:var(--ink);
+    min-height:100vh;transition:background .2s,color .2s;
+    display:flex;flex-direction:column;align-items:center;
+    padding:16px;
+  }
+  .app{width:100%;max-width:560px;display:flex;flex-direction:column;gap:14px}
+  header{display:flex;align-items:baseline;justify-content:space-between}
+  header h1{font-size:1.35rem;font-weight:800;letter-spacing:-.02em}
+  header .status{font-size:.85rem;color:var(--muted)}
+  header .status.live{color:var(--live);font-weight:700}
+
+  .pair{
+    background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    padding:14px;display:flex;align-items:center;gap:10px;justify-content:center;
+  }
+  select{
+    font-size:1.05rem;font-weight:700;padding:10px 12px;border-radius:10px;
+    border:1.5px solid var(--line);background:var(--panel);color:var(--ink);
+  }
+  .swap{
+    border:none;background:var(--accent-soft);color:var(--accent);
+    width:44px;height:44px;border-radius:50%;font-size:1.2rem;cursor:pointer;
+  }
+  .swap:active{transform:rotate(180deg)}
+
+  .box{
+    background:var(--panel);border:1px solid var(--line);border-radius:14px;
+    padding:14px;min-height:110px;display:flex;flex-direction:column;gap:6px;
+  }
+  .box .label{font-size:.8rem;color:var(--muted);font-weight:700}
+  .box .text{font-size:1.25rem;line-height:1.5;flex:1;word-break:break-word}
+  .box .text.placeholder{color:var(--muted);opacity:.7}
+  #outBox{border-color:var(--accent);border-width:2px}
+  #outBox .label{color:var(--accent)}
+
+  .controls{display:flex;gap:10px;align-items:center;justify-content:center}
+  .mic{
+    flex:1;max-width:220px;height:76px;border-radius:20px;border:none;cursor:pointer;
+    background:var(--accent);color:#fff;
+    box-shadow:0 6px 18px rgba(36,86,214,.35);
+    transition:background .15s;
+    display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;
+  }
+  .mic .micIcon{font-size:1.5rem}
+  .mic .micLbl{font-size:.85rem;font-weight:800;letter-spacing:.02em}
+  .mic-b{background:#7a3fd4;box-shadow:0 6px 18px rgba(122,63,212,.35)}
+  .mic.listening{background:var(--live);box-shadow:0 0 0 0 rgba(214,36,78,.5);animation:pulse 1.4s infinite}
+  @keyframes pulse{
+    0%{box-shadow:0 0 0 0 rgba(214,36,78,.45)}
+    70%{box-shadow:0 0 0 22px rgba(214,36,78,0)}
+    100%{box-shadow:0 0 0 0 rgba(214,36,78,0)}
+  }
+  .side{
+    border:1.5px solid var(--line);background:var(--panel);border-radius:12px;
+    padding:10px 14px;cursor:pointer;font-size:.9rem;font-weight:700;color:var(--ink);
+  }
+  .side.on{border-color:var(--ok);color:var(--ok)}
+
+  .romaji{font-size:1rem;color:var(--muted);font-style:italic;direction:ltr;text-align:left}
+  .reply{
+    border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-top:8px;
+    cursor:pointer;background:var(--reply-bg);
+  }
+  .reply:hover{border-color:var(--accent)}
+  .reply .ja{font-size:1.1rem;font-weight:700}
+  .reply .ro{font-size:.92rem;color:var(--muted);font-style:italic}
+  .reply .mean{font-size:.92rem;color:var(--ok)}
+  .hint{text-align:center;font-size:.85rem;color:var(--muted)}
+  .err{
+    display:none;background:var(--err-bg);border:1px solid var(--err-line);color:var(--err-ink);
+    border-radius:12px;padding:10px 14px;font-size:.9rem;
+  }
+  .err.show{display:block}
+  .theme{border:1.5px solid var(--line);background:var(--panel);border-radius:10px;width:38px;height:38px;font-size:1.05rem;cursor:pointer}
+</style>
+</head>
+<body>
+<div class="app">
+  <header>
+    <h1>Live Translator</h1>
+    <div style="display:flex;gap:10px;align-items:center"><button class="theme" id="themeBtn" title="Theme">🌙</button><div class="status" id="status">Ready</div></div>
+  </header>
+
+  <div class="pair">
+    <select id="srcLang">
+      <option value="en" selected>English</option>
+      <option value="ja">日本語 Japanese</option>
+      <option value="he">עברית Hebrew</option>
+    </select>
+    <button class="swap" id="swapBtn" title="Swap">⇄</button>
+    <select id="dstLang">
+      <option value="en">English</option>
+      <option value="ja" selected>日本語 Japanese</option>
+      <option value="he">עברית Hebrew</option>
+    </select>
+  </div>
+
+  <div class="box" id="inBox">
+    <div class="label" id="inLabel">Heard</div>
+    <div class="text placeholder" id="inText">Tap the mic and speak…</div>
+  </div>
+
+  <div class="box" id="outBox">
+    <div class="label">Translation</div>
+    <div class="text placeholder" id="outText">…</div>
+    <div class="romaji" id="outRomaji"></div>
+  </div>
+
+  <div class="box" id="repliesBox" style="display:none">
+    <div class="label">Suggested replies</div>
+    <div id="repliesList"></div>
+  </div>
+
+  <div class="controls">
+    <button class="mic" id="micBtn"><span class="micIcon">🎤</span><span class="micLbl" id="micLblA">EN → JA</span></button>
+    <button class="mic mic-b" id="micBtnB"><span class="micIcon">🎤</span><span class="micLbl" id="micLblB">JA → EN</span></button>
+  </div>
+  <div class="controls">
+    <button class="side" id="convoBtn">🗣 Conversation: OFF</button>
+    <button class="side" id="autoSpeak">🔊 Auto-speak: ON</button>
+    <button class="side" id="camBtn">📷 Camera</button>
+  </div>
+
+  <div class="box" id="camBox" style="display:none">
+    <div class="label">Camera translate — point at Japanese text</div>
+    <video id="camVideo" autoplay playsinline muted style="width:100%;border-radius:10px;background:#000"></video>
+    <div class="text" id="camOut" style="min-height:2em"></div>
+    <div class="romaji" id="camRomaji"></div>
+    <div class="controls" style="margin-top:6px">
+      <button class="side" id="camStop">✖ Stop camera</button>
+    </div>
+  </div>
+
+  <div class="hint" id="hint">Works best in Chrome / Android Chrome. Speech recognition needs mic permission.</div>
+
+  <details class="box" style="min-height:0">
+    <summary class="label" style="cursor:pointer">⚙️ Settings — API key (for standalone use outside Claude)</summary>
+    <input type="password" id="apiKey" placeholder="sk-ant-..." style="margin-top:8px;padding:10px;border-radius:10px;border:1.5px solid var(--line);background:var(--panel);color:var(--ink);font-size:.95rem;width:100%">
+    <div class="hint" style="text-align:start;margin-top:6px">Only needed when this page is hosted outside the Claude app (e.g. GitHub Pages). The key stays in this browser tab only.</div>
+  </details>
+  <div class="err" id="err"></div>
+</div>
+
+<script>
+const LANG = {
+  en:{name:"English", bcp:"en-US", label:"English"},
+  ja:{name:"Japanese", bcp:"ja-JP", label:"日本語"},
+  he:{name:"Hebrew", bcp:"he-IL", label:"עברית"}
+};
+
+const $ = id => document.getElementById(id);
+const srcSel=$("srcLang"), dstSel=$("dstLang"), micBtn=$("micBtn"),
+      inText=$("inText"), outText=$("outText"), statusEl=$("status"),
+      errEl=$("err"), autoSpeakBtn=$("autoSpeak"), contBtn=$("contMode");
+
+let listening=false, autoSpeak=true, continuous=false, rec=null, busy=false;
+let convoMode=false;
+let activeSrc="en", activeDst="ja";
+
+function showErr(msg){errEl.textContent=msg;errEl.classList.add("show");}
+function clearErr(){errEl.classList.remove("show");}
+function setStatus(t,live){statusEl.textContent=t;statusEl.classList.toggle("live",!!live);}
+
+function ensureDifferent(changed){
+  if(srcSel.value===dstSel.value){
+    const other = ["en","ja","he"].find(l=>l!==srcSel.value);
+    (changed==="src"?dstSel:srcSel).value=other;
+  }
+}
+srcSel.onchange=()=>ensureDifferent("src");
+dstSel.onchange=()=>ensureDifferent("dst");
+$("swapBtn").onclick=()=>{const a=srcSel.value;srcSel.value=dstSel.value;dstSel.value=a;};
+
+autoSpeakBtn.onclick=()=>{autoSpeak=!autoSpeak;autoSpeakBtn.textContent="🔊 Auto-speak: "+(autoSpeak?"ON":"OFF");autoSpeakBtn.classList.toggle("on",autoSpeak);};
+autoSpeakBtn.classList.add("on");
+
+
+const themeBtn=$("themeBtn");
+function applyTheme(dark){document.body.classList.toggle("dark",dark);themeBtn.textContent=dark?"☀️":"🌙";}
+let darkPref = matchMedia("(prefers-color-scheme: dark)").matches;
+applyTheme(darkPref);
+themeBtn.onclick=()=>{darkPref=!darkPref;applyTheme(darkPref);};
+
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+if(!SR){showErr("Speech recognition is not supported in this browser. Use Chrome (desktop or Android).");micBtn.disabled=true;}
+
+const outRomaji=$("outRomaji"), repliesBox=$("repliesBox"), repliesList=$("repliesList");
+
+let listeningStoppedManually=false;
+let translatedSoFar="";      // accumulated translated output
+let pendingQueue=[];         // chunks waiting to be translated
+let translating=false;
+let sessionSourceText="";    // full heard text this session
+let extrasTimer=null;
+
+function resetSession(){
+  translatedSoFar="";pendingQueue=[];sessionSourceText="";
+  outText.textContent="…";outText.classList.add("placeholder");
+  outRomaji.textContent="";repliesBox.style.display="none";repliesList.innerHTML="";
+  inText.textContent="";inText.classList.remove("placeholder");
+}
+
+function startListening(){
+  clearErr();
+  resetSession();
+  rec = new SR();
+  rec.lang = LANG[activeSrc].bcp;
+  rec.interimResults = true;
+  rec.continuous = !convoMode;
+  let lastFinalIndex = 0;
+
+  rec.onresult = e=>{
+    let interim="";
+    for(let i=lastFinalIndex;i<e.results.length;i++){
+      const r=e.results[i];
+      if(r.isFinal){
+        const chunk=r[0].transcript.trim();
+        lastFinalIndex=i+1;
+        if(chunk){
+          sessionSourceText += (sessionSourceText?" ":"")+chunk;
+          enqueueChunk(chunk);
+        }
+      } else interim += r[0].transcript;
+    }
+    inText.textContent = sessionSourceText + (interim?" "+interim:"");
+    inText.dir = activeSrc==="he" ? "rtl":"ltr";
+  };
+  rec.onerror = e=>{
+    if(e.error==="no-speech"){ setStatus("No speech detected"); }
+    else if(e.error==="not-allowed"){ showErr("Mic permission denied. Allow microphone access and retry."); }
+    else if(e.error!=="aborted") showErr("Recognition error: "+e.error);
+  };
+  rec.onend = async ()=>{
+    if(convoMode && listening && !listeningStoppedManually){
+      stopUI();
+      // wait for queued chunks to finish translating
+      while(translating || pendingQueue.length){ await new Promise(r=>setTimeout(r,150)); }
+      if(!sessionSourceText){ // silence, just relisten same direction
+        startListening(); return;
+      }
+      fetchExtras();
+      // wait for TTS to finish, then flip direction and listen again
+      await waitForSpeech();
+      [activeSrc,activeDst]=[activeDst,activeSrc];
+      activeBtn = (activeBtn===micBtn)?micBtnB:micBtn;
+      startListening();
+      return;
+    }
+    if(listening && !listeningStoppedManually && continuous){
+      try{rec.start();}catch(err){}
+      return;
+    }
+    stopUI();
+  };
+  rec.start();
+  startUI();
+}
+
+function enqueueChunk(chunk){
+  pendingQueue.push(chunk);
+  processQueue();
+  // schedule romaji + replies once speech pauses
+  if(extrasTimer) clearTimeout(extrasTimer);
+  extrasTimer = setTimeout(fetchExtras, 1800);
+}
+
+async function processQueue(){
+  if(translating) return;
+  translating=true;
+  while(pendingQueue.length){
+    const batch = pendingQueue.splice(0).join(" ");
+    await translateChunk(batch);
+  }
+  translating=false;
+}
+
+async function translateChunk(text){
+  setStatus("Translating…",true);
+  const src=LANG[activeSrc].name, dst=LANG[activeDst].name;
+  try{
+    const r = await fetch("https://api.anthropic.com/v1/messages",{
+      method:"POST",
+      headers:apiHeaders(),
+      body:JSON.stringify({
+        model:"claude-sonnet-4-6",
+        max_tokens:1000,
+        messages:[{role:"user",content:
+"You are translating a live spoken conversation from "+src+" to "+dst+". "+
+(translatedSoFar?("Translation so far (for context, do not repeat it): "+translatedSoFar+"\n\n"):"")+
+"Translate ONLY this next segment, naturally and conversationally. Respond with ONLY the translation text, nothing else:\n\n"+text}]
+      })
+    });
+    const data = await r.json();
+    const out = (data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("").trim();
+    if(!out) throw new Error("empty");
+    translatedSoFar += (translatedSoFar?" ":"")+out;
+    outText.classList.remove("placeholder");
+    outText.textContent = translatedSoFar;
+    outText.dir = activeDst==="he" ? "rtl":"ltr";
+    setStatus(listening?"Listening ("+LANG[activeSrc].label+")…":"Done", listening);
+    if(autoSpeak) speak(out, activeDst);
+  }catch(e){
+    showErr("Translation failed. Check connection and try again.");
+    setStatus("Ready");
+  }
+}
+
+async function fetchExtras(){
+  const jaInvolved = activeSrc==="ja" || activeDst==="ja";
+  if(!jaInvolved || !sessionSourceText) return;
+  const src=LANG[activeSrc].name, dst=LANG[activeDst].name;
+  const userLang = activeSrc==="ja" ? dst : src;
+  const jaText = activeDst==="ja" ? translatedSoFar : sessionSourceText;
+  try{
+    const r = await fetch("https://api.anthropic.com/v1/messages",{
+      method:"POST",
+      headers:apiHeaders(),
+      body:JSON.stringify({
+        model:"claude-sonnet-4-6",
+        max_tokens:1500,
+        messages:[{role:"user",content:
+"Japanese text from a live conversation:\n\n"+jaText+"\n\nRespond ONLY with valid JSON, no markdown fences:\n"+
+'{"romaji":"romaji of the Japanese text","replies":[{"ja":"short natural Japanese reply","romaji":"its romaji","meaning":"its meaning in '+userLang+'"},{...},{...}]}'}]
+      })
+    });
+    const data = await r.json();
+    let raw = (data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("").trim();
+    raw = raw.replace(/```json|```/g,"").trim();
+    const obj = JSON.parse(raw);
+    if(obj.romaji) outRomaji.textContent = obj.romaji;
+    if(Array.isArray(obj.replies) && obj.replies.length){
+      repliesBox.style.display="";repliesList.innerHTML="";
+      const userDir = userLang==="Hebrew"?"rtl":"ltr";
+      for(const rep of obj.replies){
+        const d=document.createElement("div");
+        d.className="reply";
+        d.innerHTML =
+          '<div class="ja">'+escapeHtml(rep.ja||"")+'</div>'+
+          '<div class="ro">'+escapeHtml(rep.romaji||"")+'</div>'+
+          '<div class="mean" dir="'+userDir+'">'+escapeHtml(rep.meaning||"")+'</div>';
+        d.onclick=()=>speak(rep.ja,"ja");
+        repliesList.appendChild(d);
+      }
+    }
+  }catch(e){ /* extras are best-effort */ }
+}
+
+function escapeHtml(s){return String(s).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+
+function apiHeaders(){
+  const h={"Content-Type":"application/json"};
+  const k=$("apiKey").value.trim();
+  if(k){h["x-api-key"]=k;h["anthropic-version"]="2023-06-01";h["anthropic-dangerous-direct-browser-access"]="true";}
+  return h;
+}
+
+const micBtnB=$("micBtnB");
+let activeBtn=null;
+function startUI(){listening=true;listeningStoppedManually=false;if(activeBtn)activeBtn.classList.add("listening");setStatus("Listening ("+LANG[activeSrc].label+")…",true);}
+function stopUI(){listening=false;micBtn.classList.remove("listening");micBtnB.classList.remove("listening");setStatus("Ready");}
+
+function toggleMic(btn, src, dst){
+  if(listening){
+    const same = activeBtn===btn;
+    listeningStoppedManually=true;try{rec && rec.stop();}catch(e){};stopUI();fetchExtras();
+    if(same) return; // tapped the active one: just stop
+  }
+  activeBtn=btn; activeSrc=src; activeDst=dst;
+  startListening();
+}
+micBtn.onclick = ()=>toggleMic(micBtn, srcSel.value, dstSel.value);
+micBtnB.onclick = ()=>toggleMic(micBtnB, dstSel.value, srcSel.value);
+
+function waitForSpeech(){
+  return new Promise(res=>{
+    if(!window.speechSynthesis || !speechSynthesis.speaking){res();return;}
+    const iv=setInterval(()=>{if(!speechSynthesis.speaking){clearInterval(iv);res();}},120);
+    setTimeout(()=>{clearInterval(iv);res();},15000);
+  });
+}
+
+const convoBtn=$("convoBtn");
+convoBtn.onclick=()=>{
+  convoMode=!convoMode;
+  convoBtn.textContent="🗣 Conversation: "+(convoMode?"ON":"OFF");
+  convoBtn.classList.toggle("on",convoMode);
+  if(convoMode && !listening){
+    activeBtn=micBtn; activeSrc=srcSel.value; activeDst=dstSel.value;
+    startListening();
+  }
+  if(!convoMode && listening){
+    listeningStoppedManually=true;try{rec&&rec.stop();}catch(e){};stopUI();
+  }
+};
+
+function refreshMicLabels(){
+  $("micLblA").textContent = LANG[srcSel.value].label+" → "+LANG[dstSel.value].label;
+  $("micLblB").textContent = LANG[dstSel.value].label+" → "+LANG[srcSel.value].label;
+}
+srcSel.addEventListener("change",refreshMicLabels);
+dstSel.addEventListener("change",refreshMicLabels);
+$("swapBtn").addEventListener("click",refreshMicLabels);
+refreshMicLabels();
+
+// ---- Camera live translate ----
+const camBox=$("camBox"), camVideo=$("camVideo"), camOut=$("camOut"), camRomajiEl=$("camRomaji");
+let camStream=null, camTimer=null, camBusy=false, lastCamText="";
+$("camBtn").onclick=async ()=>{
+  clearErr();
+  if(listening){listeningStoppedManually=true;try{rec&&rec.stop();}catch(e){};stopUI();}
+  try{
+    camStream = await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}, audio:false});
+  }catch(e){ showErr("Camera permission denied or unavailable."); return; }
+  camVideo.srcObject = camStream;
+  camBox.style.display="";
+  camOut.textContent="Point the camera at Japanese text…";
+  camOut.classList.add("placeholder");
+  camTimer = setInterval(captureAndTranslate, 3000);
+};
+$("camStop").onclick=()=>{
+  clearInterval(camTimer);camTimer=null;
+  if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;}
+  camBox.style.display="none";lastCamText="";
+};
+async function captureAndTranslate(){
+  if(camBusy || !camStream) return;
+  camBusy=true;
+  try{
+    const c=document.createElement("canvas");
+    const w=camVideo.videoWidth, h=camVideo.videoHeight;
+    if(!w){camBusy=false;return;}
+    const scale=Math.min(1, 1024/Math.max(w,h));
+    c.width=Math.round(w*scale); c.height=Math.round(h*scale);
+    c.getContext("2d").drawImage(camVideo,0,0,c.width,c.height);
+    const b64 = c.toDataURL("image/jpeg",0.7).split(",")[1];
+    const r = await fetch("https://api.anthropic.com/v1/messages",{
+      method:"POST",headers:apiHeaders(),
+      body:JSON.stringify({
+        model:"claude-sonnet-4-6",max_tokens:1000,
+        messages:[{role:"user",content:[
+          {type:"image",source:{type:"base64",media_type:"image/jpeg",data:b64}},
+          {type:"text",text:'Extract any Japanese text visible in this image and translate it to English. Respond ONLY with valid JSON, no markdown fences: {"ja":"the Japanese text found (empty string if none)","romaji":"its romaji","en":"English translation"}. If no Japanese text is clearly readable, return {"ja":"","romaji":"","en":""}.'}
+        ]}]
+      })
+    });
+    const data = await r.json();
+    let raw=(data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("").trim().replace(/```json|```/g,"").trim();
+    const obj = JSON.parse(raw);
+    if(obj.en && obj.ja!==lastCamText){
+      lastCamText=obj.ja;
+      camOut.classList.remove("placeholder");
+      camOut.textContent = obj.en;
+      camRomajiEl.textContent = obj.ja + (obj.romaji? "  ·  "+obj.romaji : "");
+    } else if(!obj.en && !lastCamText){
+      camOut.textContent="No Japanese text detected yet…";
+    }
+  }catch(e){ /* keep scanning silently */ }
+  camBusy=false;
+}
+
+
+function speak(text, lang){
+  if(!window.speechSynthesis)return;
+  const u = new SpeechSynthesisUtterance(text);
+  u.lang = LANG[lang].bcp;
+  const voices = speechSynthesis.getVoices();
+  const v = voices.find(v=>v.lang.startsWith(lang)) || voices.find(v=>v.lang.startsWith(LANG[lang].bcp.split("-")[0]));
+  if(v) u.voice=v;
+  u.rate = 1.0;
+  speechSynthesis.speak(u);
+}
+if(window.speechSynthesis) speechSynthesis.getVoices();
+if("serviceWorker" in navigator){navigator.serviceWorker.register("sw.js").catch(()=>{});}
+// persist API key on device so it's entered once
+const savedKey = localStorage.getItem("lt_api_key");
+if(savedKey) $("apiKey").value = savedKey;
+$("apiKey").addEventListener("change",()=>localStorage.setItem("lt_api_key", $("apiKey").value.trim()));
+</script>
+</body>
+</html>
