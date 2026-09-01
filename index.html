@@ -101,7 +101,7 @@
 <div class="popup-wrap" id="popups"></div>
 <div class="app">
   <header>
-    <h1>Live Translator <small>v21</small></h1>
+    <h1>Live Translator <small>v23</small></h1>
     <div class="right">
       <button class="theme" id="themeBtn">🌙</button>
       <div class="status" id="status">Ready</div>
@@ -607,17 +607,37 @@ function addSuggestionSet(replies, forText, dir){
   repliesList.scrollTop=0;
 }
 
-/* ---------- CAMERA (lens-style overlay, JA -> EN) ---------- */
+/* ---------- CAMERA (real OCR boxes + GPT translation) ---------- */
 const camBox=$("camBox"),camVideo=$("camVideo"),camOverlay=$("camOverlay"),camStatus=$("camStatus");
 let camStream=null,camTimer=null,camBusy=false,camScanCount=0,camZoomF=1;
+let ocrWorker=null,ocrReady=false,ocrLoading=false;
 const camZoomEl=$("camZoom");
 camZoomEl.addEventListener("input",()=>{
   camZoomF=parseFloat(camZoomEl.value)||1;
   $("camZoomVal").textContent=camZoomF.toFixed(1)+"×";
   camVideo.style.transform="scale("+camZoomF+")";
   camVideo.style.transformOrigin="center center";
-  camOverlay.innerHTML=""; // old boxes no longer match after zoom change
+  camOverlay.innerHTML="";
 });
+
+function loadScript(src){return new Promise((res,rej)=>{const t=document.createElement("script");t.src=src;t.onload=res;t.onerror=()=>rej(new Error("failed to load "+src));document.head.appendChild(t);});}
+
+async function initOcr(){
+  if(ocrReady||ocrLoading)return;
+  ocrLoading=true;
+  camStatus.textContent="Loading text-recognition engine (first time only, ~15 MB)…";
+  try{
+    await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js");
+    ocrWorker=await Tesseract.createWorker(["jpn","jpn_vert"]);
+    await ocrWorker.setParameters({tessedit_pageseg_mode:"11"}); // sparse text
+    ocrReady=true;
+    camStatus.textContent="Text engine ready.";
+  }catch(e){
+    camStatus.textContent="Could not load OCR engine: "+(e.message||"")+" — check internet.";
+  }
+  ocrLoading=false;
+}
+
 $("camBtn").onclick=async()=>{
   clearErr();
   if(!keyCheck())return;
@@ -627,70 +647,84 @@ $("camBtn").onclick=async()=>{
   camBox.style.display="";
   camOverlay.innerHTML="";
   camScanCount=0;
-  camStatus.textContent="Point at Japanese text — translations will appear over it.";
-  camTimer=setInterval(camScan,2500);
+  initOcr();
+  camTimer=setInterval(camScan,3500);
 };
 $("camStop").onclick=()=>{
   clearInterval(camTimer);camTimer=null;
   if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;}
   camBox.style.display="none";camOverlay.innerHTML="";
 };
+
+const camTranslationCache={}; // ja text -> en, so still frames cost nothing
 async function camScan(){
-  if(camBusy||!camStream)return;
+  if(camBusy||!camStream||!ocrReady)return;
   camBusy=true;camScanCount++;
   camStatus.textContent="Scanning… ("+camScanCount+")";
   try{
-    const c=document.createElement("canvas");
     const w=camVideo.videoWidth,h=camVideo.videoHeight;
     if(!w){camBusy=false;return;}
-    // visible region under digital zoom = center crop of 1/zoom
-    const cw=w/camZoomF, ch=h/camZoomF, cx=(w-cw)/2, cy=(h-ch)/2;
-    const sc=Math.min(1,1024/Math.max(cw,ch));
+    const cw=w/camZoomF,ch=h/camZoomF,cx=(w-cw)/2,cy=(h-ch)/2;
+    const c=document.createElement("canvas");
+    const sc=Math.min(1,1280/Math.max(cw,ch));
     c.width=Math.round(cw*sc);c.height=Math.round(ch*sc);
-    const g=c.getContext("2d");
-    g.drawImage(camVideo,cx,cy,cw,ch,0,0,c.width,c.height);
-    // reference grid every 10% with coordinate labels — helps the model report accurate positions
-    g.strokeStyle="rgba(255,0,0,0.55)";g.lineWidth=1;
-    g.fillStyle="rgba(255,0,0,0.9)";g.font=Math.round(c.height*0.025)+"px sans-serif";
-    for(let i=1;i<10;i++){
-      const gx=c.width*i/10, gy=c.height*i/10;
-      g.beginPath();g.moveTo(gx,0);g.lineTo(gx,c.height);g.stroke();
-      g.beginPath();g.moveTo(0,gy);g.lineTo(c.width,gy);g.stroke();
-      g.fillText((i/10).toFixed(1),gx+2,12);
-      g.fillText((i/10).toFixed(1),2,gy-3);
+    c.getContext("2d").drawImage(camVideo,cx,cy,cw,ch,0,0,c.width,c.height);
+
+    const res=await ocrWorker.recognize(c);
+    const lines=(res.data.lines||[]).filter(l=>{
+      const t=(l.text||"").trim();
+      return t.length>=1 && l.confidence>35 && /[\u3040-\u30ff\u4e00-\u9fff]/.test(t);
+    }).map(l=>({text:l.text.trim().replace(/\s+/g,""),bbox:l.bbox}));
+    if(!lines.length){camStatus.textContent="No Japanese text detected ("+camScanCount+")";camOverlay.innerHTML="";camBusy=false;return;}
+
+    // translate only lines we haven't seen (batch, one call)
+    const unknown=[...new Set(lines.map(l=>l.text))].filter(t=>!(t in camTranslationCache));
+    if(unknown.length){
+      try{
+        let raw=await aiChat(
+'These lines were OCR-read from Japanese signs (may contain small OCR errors — infer the intended text). Translate each to short natural English. Respond ONLY with a JSON array of strings in the same order, no fences:\n'
++JSON.stringify(unknown),600);
+        raw=raw.replace(/```json|```/g,"").trim();
+        const arr=JSON.parse(raw);
+        unknown.forEach((t,k)=>{camTranslationCache[t]=(Array.isArray(arr)&&arr[k])?arr[k]:"";});
+      }catch(e){/* keep boxes without translation this round */}
     }
-    const b64=c.toDataURL("image/jpeg",0.72).split(",")[1];
-    const r=await fetch("https://api.openai.com/v1/chat/completions",{
-      method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+$("oaiKey").value.trim()},
-      body:JSON.stringify({model:"gpt-4o-mini",max_tokens:900,messages:[{role:"user",content:[
-        {type:"image_url",image_url:{url:"data:image/jpeg;base64,"+b64}},
-        {type:"text",text:'The image has a red reference grid: lines every 0.1 with coordinate labels (x across the top, y down the left). Find every distinct block of Japanese text and translate each to English. Using the grid, give each block\'s bounding box: x,y = top-left corner, w,h = width and height, as decimals 0-1 read off the grid. Vertical Japanese text columns count as one block covering the full column. Respond ONLY with valid JSON, no fences: {"blocks":[{"en":"English translation","x":0.1,"y":0.2,"w":0.3,"h":0.05}]}. If none: {"blocks":[]}'}]}]})
-    });
-    if(!r.ok){const t=await r.text().catch(()=>"");camStatus.textContent="Camera error: API "+r.status+(t?" — "+t.slice(0,100):"");camBusy=false;return;}
-    const data=await r.json();
-    if(data.usage)addSpend((data.usage.prompt_tokens||0)*PRICE.chat_in+(data.usage.completion_tokens||0)*PRICE.chat_out);
-    let raw=(data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content||"").trim().replace(/```json|```/g,"").trim();
-    let obj;try{obj=JSON.parse(raw);}catch(e){camStatus.textContent="Read error — retrying…";camBusy=false;return;}
-    const blocks=Array.isArray(obj.blocks)?obj.blocks:[];
+
     camOverlay.innerHTML="";
-    let noCoordRow=0;
-    for(const b of blocks){
-      if(!b.en)continue;
+    const g2=c.getContext("2d");
+    for(const l of lines){
+      const en=camTranslationCache[l.text];
+      if(!en)continue;
+      // sample the sign's background: pixels along the box border (avoids the dark glyphs inside)
+      let r=0,gc=0,b=0,n=0;
+      const bx=l.bbox, pad=2;
+      try{
+        const strips=[
+          g2.getImageData(Math.max(0,bx.x0-pad),Math.max(0,bx.y0-pad),Math.min(c.width-bx.x0,bx.x1-bx.x0+2*pad),2),
+          g2.getImageData(Math.max(0,bx.x0-pad),Math.min(c.height-3,bx.y1+pad-2),Math.min(c.width-bx.x0,bx.x1-bx.x0+2*pad),2)
+        ];
+        for(const st of strips)for(let k=0;k<st.data.length;k+=4){r+=st.data[k];gc+=st.data[k+1];b+=st.data[k+2];n++;}
+      }catch(e){}
+      if(n){r=Math.round(r/n);gc=Math.round(gc/n);b=Math.round(b/n);}else{r=gc=b=235;}
+      const lum=0.299*r+0.587*gc+0.114*b;
+      const fg=lum>140?"#111":"#fff";
       const d=document.createElement("div");
-      const hasCoords=isFinite(+b.x)&&isFinite(+b.y)&&isFinite(+b.w)&&isFinite(+b.h)&&(+b.w>0)&&(+b.h>0);
-      if(!hasCoords){ // still show ON the frame: stack banners from the top
-        b.x=0.03;b.y=0.03+0.12*noCoordRow;b.w=0.94;b.h=0.10;noCoordRow++;
-      }
-      const x=Math.max(0,Math.min(1,+b.x||0))*100, y=Math.max(0,Math.min(1,+b.y||0))*100;
-      const bw=Math.max(0.05,Math.min(1,+b.w||0.3))*100, bh=Math.max(0.03,Math.min(1,+b.h||0.06))*100;
-      d.style.cssText="position:absolute;left:"+x+"%;top:"+y+"%;width:"+bw+"%;min-height:"+bh+"%;"
-        +"background:rgba(10,12,20,.82);color:#fff;border-radius:6px;padding:2px 6px;"
+      const x=bx.x0/c.width*100, y=bx.y0/c.height*100;
+      const bw=(bx.x1-bx.x0)/c.width*100, bh=(bx.y1-bx.y0)/c.height*100;
+      d.style.cssText="position:absolute;left:"+(x-0.5)+"%;top:"+(y-0.4)+"%;width:"+(Math.max(bw,6)+1)+"%;height:"+(bh+0.8)+"%;"
+        +"background:rgb("+r+","+gc+","+b+");color:"+fg+";"
         +"display:flex;align-items:center;justify-content:center;text-align:center;"
-        +"font-weight:700;line-height:1.2;font-size:clamp(10px,"+Math.max(2.2,bh*0.55)+"vw,22px);overflow:hidden";
-      d.textContent=b.en;
+        +"font-weight:800;line-height:1.05;overflow:hidden;white-space:nowrap";
+      d.textContent=en;
       camOverlay.appendChild(d);
+      // fit text to the box: shrink until it fits
+      requestAnimationFrame(()=>{
+        let fs=Math.max(9,d.clientHeight*0.72);
+        d.style.fontSize=fs+"px";
+        while(fs>8&&(d.scrollWidth>d.clientWidth||d.scrollHeight>d.clientHeight)){fs-=1;d.style.fontSize=fs+"px";}
+      });
     }
-    camStatus.textContent=blocks.length?blocks.length+" text block(s) translated":"No Japanese text detected ("+camScanCount+")";
+    camStatus.textContent=lines.length+" line(s) — exact positions";
   }catch(e){camStatus.textContent="Camera error: "+(e.message||"unknown");}
   camBusy=false;
 }
