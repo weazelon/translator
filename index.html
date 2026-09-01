@@ -101,7 +101,7 @@
 <div class="popup-wrap" id="popups"></div>
 <div class="app">
   <header>
-    <h1>Live Translator <small>v18</small></h1>
+    <h1>Live Translator <small>v20</small></h1>
     <div class="right">
       <button class="theme" id="themeBtn">🌙</button>
       <div class="status" id="status">Ready</div>
@@ -162,6 +162,11 @@
       <video id="camVideo" autoplay playsinline muted style="width:100%;display:block"></video>
       <div id="camOverlay" style="position:absolute;inset:0;pointer-events:none"></div>
     </div>
+    <div style="display:flex;gap:10px;align-items:center;margin-top:6px">
+      <span class="label">🔍 Zoom</span>
+      <input type="range" id="camZoom" min="1" max="3" step="0.1" value="1" style="flex:1">
+      <span class="label" id="camZoomVal">1.0×</span>
+    </div>
     <div class="hint" id="camStatus" style="text-align:start"></div>
     <div class="controls" style="margin-top:6px"><button class="side" id="camStop">✖ Stop camera</button></div>
   </div>
@@ -172,6 +177,12 @@
     <summary class="label" style="cursor:pointer">⚙️ Settings — OpenAI API key</summary>
     <input type="password" id="oaiKey" placeholder="OpenAI API key: sk-..." style="margin-top:8px;padding:10px;border-radius:10px;border:1.5px solid var(--line);background:var(--panel);color:var(--ink);font-size:.95rem;width:100%">
     <div class="hint" style="text-align:start;margin-top:6px">Stored on this device only.</div>
+    <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
+      <span class="label">Budget $</span>
+      <input type="number" id="budgetUsd" value="5" min="1" step="1" style="width:70px;padding:8px;border-radius:10px;border:1.5px solid var(--line);background:var(--panel);color:var(--ink)">
+      <span class="hint" id="usageLine" style="text-align:start"></span>
+      <button class="side" id="usageReset" style="margin-inline-start:auto">Reset counter</button>
+    </div>
   </details>
 
   <div class="hint">Works best in Chrome / Android Chrome.</div>
@@ -234,6 +245,22 @@ function keyCheck(){
   return true;
 }
 
+/* ---------- spend tracking (local estimate) ---------- */
+const PRICE={chat_in:0.15/1e6, chat_out:0.60/1e6, stt_min:0.003}; // gpt-4o-mini + mini-transcribe
+let spentUsd=parseFloat(localStorage.getItem("lt_spent")||"0");
+function budget(){return parseFloat(($("budgetUsd")&&$("budgetUsd").value)||"5")||5;}
+let warned80=false,warned95=false;
+function addSpend(u){
+  spentUsd+=u;localStorage.setItem("lt_spent",spentUsd.toFixed(6));
+  updateUsageLine();
+  const b=budget(),p=spentUsd/b;
+  if(p>=0.95&&!warned95){warned95=true;popup("api","OPENAI","⚠️ ~95% of your $"+b+" budget used (est. $"+spentUsd.toFixed(2)+"). Top up at platform.openai.com or translations will stop soon.");}
+  else if(p>=0.8&&!warned80){warned80=true;popup("api","OPENAI","Heads up: ~80% of your $"+b+" budget used (est. $"+spentUsd.toFixed(2)+").");}
+}
+function updateUsageLine(){
+  const el=$("usageLine");if(el)el.textContent="used ≈ $"+spentUsd.toFixed(2)+" of $"+budget();
+}
+
 /* ---------- OpenAI helpers ---------- */
 async function aiChat(userContent,maxTokens){
   const r=await fetch("https://api.openai.com/v1/chat/completions",{
@@ -243,6 +270,7 @@ async function aiChat(userContent,maxTokens){
   });
   if(!r.ok){const t=await r.text().catch(()=>"");throw new Error("API "+r.status+(t?": "+t.slice(0,160):""));}
   const d=await r.json();
+  if(d.usage)addSpend((d.usage.prompt_tokens||0)*PRICE.chat_in+(d.usage.completion_tokens||0)*PRICE.chat_out);
   return (d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content||"").trim();
 }
 
@@ -532,6 +560,7 @@ async function processSegment(blob){
     const wr=await fetch("https://api.openai.com/v1/audio/transcriptions",{
       method:"POST",headers:{"Authorization":"Bearer "+$("oaiKey").value.trim()},body:fd});
     if(!wr.ok){const t=await wr.text().catch(()=>"");showErr("Transcribe API "+wr.status+(t?" — "+t.slice(0,120):""));return;}
+    addSpend((blob.size/4000)/60*PRICE.stt_min);
     const w=await wr.json();
     let text=(w.text||"").trim();
     if(!text||text.length<2)return;
@@ -580,7 +609,15 @@ function addSuggestionSet(replies, forText, dir){
 
 /* ---------- CAMERA (lens-style overlay, JA -> EN) ---------- */
 const camBox=$("camBox"),camVideo=$("camVideo"),camOverlay=$("camOverlay"),camStatus=$("camStatus");
-let camStream=null,camTimer=null,camBusy=false,camScanCount=0;
+let camStream=null,camTimer=null,camBusy=false,camScanCount=0,camZoomF=1;
+const camZoomEl=$("camZoom");
+camZoomEl.addEventListener("input",()=>{
+  camZoomF=parseFloat(camZoomEl.value)||1;
+  $("camZoomVal").textContent=camZoomF.toFixed(1)+"×";
+  camVideo.style.transform="scale("+camZoomF+")";
+  camVideo.style.transformOrigin="center center";
+  camOverlay.innerHTML=""; // old boxes no longer match after zoom change
+});
 $("camBtn").onclick=async()=>{
   clearErr();
   if(!keyCheck())return;
@@ -606,25 +643,33 @@ async function camScan(){
     const c=document.createElement("canvas");
     const w=camVideo.videoWidth,h=camVideo.videoHeight;
     if(!w){camBusy=false;return;}
-    const sc=Math.min(1,1024/Math.max(w,h));
-    c.width=Math.round(w*sc);c.height=Math.round(h*sc);
-    c.getContext("2d").drawImage(camVideo,0,0,c.width,c.height);
+    // visible region under digital zoom = center crop of 1/zoom
+    const cw=w/camZoomF, ch=h/camZoomF, cx=(w-cw)/2, cy=(h-ch)/2;
+    const sc=Math.min(1,1024/Math.max(cw,ch));
+    c.width=Math.round(cw*sc);c.height=Math.round(ch*sc);
+    c.getContext("2d").drawImage(camVideo,cx,cy,cw,ch,0,0,c.width,c.height);
     const b64=c.toDataURL("image/jpeg",0.7).split(",")[1];
     const r=await fetch("https://api.openai.com/v1/chat/completions",{
       method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+$("oaiKey").value.trim()},
       body:JSON.stringify({model:"gpt-4o-mini",max_tokens:900,messages:[{role:"user",content:[
         {type:"image_url",image_url:{url:"data:image/jpeg;base64,"+b64}},
-        {type:"text",text:'Find every distinct block of Japanese text in this image and translate each to English. For each block give its position as fractions of the image (x,y = top-left corner, w,h = size, all between 0 and 1). Respond ONLY with valid JSON, no fences: {"blocks":[{"en":"English translation","x":0.1,"y":0.2,"w":0.3,"h":0.05}]}. If there is no Japanese text: {"blocks":[]}'}]}]})
+        {type:"text",text:'Find every distinct block of Japanese text in this image and translate each to English. For each block you MUST estimate its bounding box as fractions of the image: x,y = top-left corner, w,h = width and height, each strictly between 0 and 1. Every block MUST include all four numbers — never omit them. Respond ONLY with valid JSON, no fences: {"blocks":[{"en":"English translation","x":0.1,"y":0.2,"w":0.3,"h":0.05}]}. If there is no Japanese text: {"blocks":[]}'}]}]})
     });
     if(!r.ok){const t=await r.text().catch(()=>"");camStatus.textContent="Camera error: API "+r.status+(t?" — "+t.slice(0,100):"");camBusy=false;return;}
     const data=await r.json();
+    if(data.usage)addSpend((data.usage.prompt_tokens||0)*PRICE.chat_in+(data.usage.completion_tokens||0)*PRICE.chat_out);
     let raw=(data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content||"").trim().replace(/```json|```/g,"").trim();
     let obj;try{obj=JSON.parse(raw);}catch(e){camStatus.textContent="Read error — retrying…";camBusy=false;return;}
     const blocks=Array.isArray(obj.blocks)?obj.blocks:[];
     camOverlay.innerHTML="";
+    let noCoordRow=0;
     for(const b of blocks){
       if(!b.en)continue;
       const d=document.createElement("div");
+      const hasCoords=isFinite(+b.x)&&isFinite(+b.y)&&isFinite(+b.w)&&isFinite(+b.h)&&(+b.w>0)&&(+b.h>0);
+      if(!hasCoords){ // still show ON the frame: stack banners from the top
+        b.x=0.03;b.y=0.03+0.12*noCoordRow;b.w=0.94;b.h=0.10;noCoordRow++;
+      }
       const x=Math.max(0,Math.min(1,+b.x||0))*100, y=Math.max(0,Math.min(1,+b.y||0))*100;
       const bw=Math.max(0.05,Math.min(1,+b.w||0.3))*100, bh=Math.max(0.03,Math.min(1,+b.h||0.06))*100;
       d.style.cssText="position:absolute;left:"+x+"%;top:"+y+"%;width:"+bw+"%;min-height:"+bh+"%;"
@@ -638,6 +683,11 @@ async function camScan(){
   }catch(e){camStatus.textContent="Camera error: "+(e.message||"unknown");}
   camBusy=false;
 }
+
+$("usageReset").onclick=()=>{spentUsd=0;warned80=false;warned95=false;localStorage.setItem("lt_spent","0");updateUsageLine();};
+const savedBudget=localStorage.getItem("lt_budget");if(savedBudget)$("budgetUsd").value=savedBudget;
+$("budgetUsd").addEventListener("change",()=>{localStorage.setItem("lt_budget",$("budgetUsd").value);warned80=false;warned95=false;updateUsageLine();});
+updateUsageLine();
 
 /* ---------- PWA ---------- */
 if("serviceWorker" in navigator){navigator.serviceWorker.register("sw.js").catch(()=>{});}
