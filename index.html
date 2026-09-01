@@ -101,7 +101,7 @@
 <div class="popup-wrap" id="popups"></div>
 <div class="app">
   <header>
-    <h1>Live Translator <small>v20</small></h1>
+    <h1>Live Translator <small>v21</small></h1>
     <div class="right">
       <button class="theme" id="themeBtn">🌙</button>
       <div class="status" id="status">Ready</div>
@@ -647,13 +647,24 @@ async function camScan(){
     const cw=w/camZoomF, ch=h/camZoomF, cx=(w-cw)/2, cy=(h-ch)/2;
     const sc=Math.min(1,1024/Math.max(cw,ch));
     c.width=Math.round(cw*sc);c.height=Math.round(ch*sc);
-    c.getContext("2d").drawImage(camVideo,cx,cy,cw,ch,0,0,c.width,c.height);
-    const b64=c.toDataURL("image/jpeg",0.7).split(",")[1];
+    const g=c.getContext("2d");
+    g.drawImage(camVideo,cx,cy,cw,ch,0,0,c.width,c.height);
+    // reference grid every 10% with coordinate labels — helps the model report accurate positions
+    g.strokeStyle="rgba(255,0,0,0.55)";g.lineWidth=1;
+    g.fillStyle="rgba(255,0,0,0.9)";g.font=Math.round(c.height*0.025)+"px sans-serif";
+    for(let i=1;i<10;i++){
+      const gx=c.width*i/10, gy=c.height*i/10;
+      g.beginPath();g.moveTo(gx,0);g.lineTo(gx,c.height);g.stroke();
+      g.beginPath();g.moveTo(0,gy);g.lineTo(c.width,gy);g.stroke();
+      g.fillText((i/10).toFixed(1),gx+2,12);
+      g.fillText((i/10).toFixed(1),2,gy-3);
+    }
+    const b64=c.toDataURL("image/jpeg",0.72).split(",")[1];
     const r=await fetch("https://api.openai.com/v1/chat/completions",{
       method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+$("oaiKey").value.trim()},
       body:JSON.stringify({model:"gpt-4o-mini",max_tokens:900,messages:[{role:"user",content:[
         {type:"image_url",image_url:{url:"data:image/jpeg;base64,"+b64}},
-        {type:"text",text:'Find every distinct block of Japanese text in this image and translate each to English. For each block you MUST estimate its bounding box as fractions of the image: x,y = top-left corner, w,h = width and height, each strictly between 0 and 1. Every block MUST include all four numbers — never omit them. Respond ONLY with valid JSON, no fences: {"blocks":[{"en":"English translation","x":0.1,"y":0.2,"w":0.3,"h":0.05}]}. If there is no Japanese text: {"blocks":[]}'}]}]})
+        {type:"text",text:'The image has a red reference grid: lines every 0.1 with coordinate labels (x across the top, y down the left). Find every distinct block of Japanese text and translate each to English. Using the grid, give each block\'s bounding box: x,y = top-left corner, w,h = width and height, as decimals 0-1 read off the grid. Vertical Japanese text columns count as one block covering the full column. Respond ONLY with valid JSON, no fences: {"blocks":[{"en":"English translation","x":0.1,"y":0.2,"w":0.3,"h":0.05}]}. If none: {"blocks":[]}'}]}]})
     });
     if(!r.ok){const t=await r.text().catch(()=>"");camStatus.textContent="Camera error: API "+r.status+(t?" — "+t.slice(0,100):"");camBusy=false;return;}
     const data=await r.json();
