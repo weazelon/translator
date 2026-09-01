@@ -100,7 +100,7 @@
 <div class="popup-wrap" id="popups"></div>
 <div class="app">
   <header>
-    <h1>Live Translator <small>v12</small></h1>
+    <h1>Live Translator <small>v13</small></h1>
     <div class="right">
       <button class="theme" id="themeBtn">🌙</button>
       <div class="status" id="status">Ready</div>
@@ -515,6 +515,15 @@ function recordSegment(ms){
     setTimeout(()=>{clearInterval(iv);try{simulRecorder.stop();}catch(e){res(null);}},ms);
   });
 }
+let lastSegText="",lastSegAt=0;
+function isDupSegment(text){
+  const now=Date.now();
+  const a=lastSegText.replace(/[\s。、,.!?！？]/g,"").toLowerCase();
+  const b=text.replace(/[\s。、,.!?！？]/g,"").toLowerCase();
+  const dup = b && (a.includes(b) || (now-lastSegAt<12000 && b.length>3 && a.endsWith(b.slice(0,Math.min(b.length,a.length)))));
+  lastSegText=text;lastSegAt=now;
+  return dup;
+}
 async function processSegment(blob){
   try{
     const fd=new FormData();
@@ -527,6 +536,7 @@ async function processSegment(blob){
     const w=await wr.json();
     const text=(w.text||"").trim();
     if(!text||text.length<2)return;
+    if(isDupSegment(text))return; // tail of the previous utterance caught by the next segment
     // detect language from the script of the text itself — more reliable than the model's guess
     let segSrc = /[\u3040-\u30ff\u4e00-\u9fff]/.test(text) ? "ja"
                : /[\u0590-\u05ff]/.test(text) ? "he" : "en";
