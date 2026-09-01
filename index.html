@@ -105,6 +105,12 @@
   .reply .ja{font-size:1.1rem;font-weight:700}
   .reply .ro{font-size:.92rem;color:var(--muted);font-style:italic}
   .reply .mean{font-size:.92rem;color:var(--ok)}
+  .turn{border-inline-start:3px solid var(--line);padding:6px 10px;margin-top:8px}
+  .turn.a{border-color:var(--accent)}
+  .turn.b{border-color:#7a3fd4}
+  .turn .src{font-size:.95rem;color:var(--muted)}
+  .turn .dst{font-size:1.1rem;font-weight:600}
+  .turn .ro{font-size:.9rem;color:var(--muted);font-style:italic}
   .hint{text-align:center;font-size:.85rem;color:var(--muted)}
   .err{
     display:none;background:var(--err-bg);border:1px solid var(--err-line);color:var(--err-ink);
@@ -144,6 +150,11 @@
     <div class="label">Translation</div>
     <div class="text placeholder" id="outText">…</div>
     <div class="romaji" id="outRomaji"></div>
+  </div>
+
+  <div class="box" id="histBox" style="display:none">
+    <div class="label">Conversation</div>
+    <div id="histList"></div>
   </div>
 
   <div class="box" id="repliesBox" style="display:none">
@@ -234,6 +245,20 @@ let translating=false;
 let sessionSourceText="";    // full heard text this session
 let extrasTimer=null;
 
+const histBox=$("histBox"), histList=$("histList");
+let lastRomajiShown="";
+function pushTurnToHistory(){
+  if(!sessionSourceText || !translatedSoFar) return;
+  histBox.style.display="";
+  const d=document.createElement("div");
+  d.className="turn "+(activeBtn===micBtnB?"b":"a");
+  d.innerHTML='<div class="src">'+escapeHtml(sessionSourceText)+'</div>'
+    +'<div class="dst">'+escapeHtml(translatedSoFar)+'</div>'
+    +(lastRomajiShown?'<div class="ro">'+escapeHtml(lastRomajiShown)+'</div>':'');
+  histList.appendChild(d);
+  histList.parentElement.scrollTop=1e9;
+  lastRomajiShown="";
+}
 function resetSession(){
   translationFailed=false;
   translatedSoFar="";pendingQueue=[];sessionSourceText="";
@@ -250,22 +275,41 @@ function startListening(){
   rec.lang = LANG[activeSrc].bcp;
   rec.interimResults = true;
   rec.continuous = !convoMode;
-  let lastFinalIndex = 0;
+  let enqueuedLen = 0;
+
+  // append b to a, trimming any overlapping repetition (Android Chrome re-sends earlier speech)
+  function mergeOverlap(a,b){
+    a=a.trim(); b=b.trim();
+    if(!a) return b;
+    if(!b) return a;
+    const al=a.toLowerCase(), bl=b.toLowerCase();
+    if(al.endsWith(bl)) return a;                 // b entirely repeated
+    const max=Math.min(al.length,bl.length);
+    for(let k=max;k>0;k--){                        // longest suffix of a == prefix of b
+      if(al.slice(-k)===bl.slice(0,k)) return a+" "+b.slice(k).trim();
+    }
+    return a+" "+b;
+  }
 
   rec.onresult = e=>{
-    let interim="";
-    for(let i=lastFinalIndex;i<e.results.length;i++){
+    let finals="", interim="";
+    for(let i=0;i<e.results.length;i++){
       const r=e.results[i];
-      if(r.isFinal){
-        const chunk=r[0].transcript.trim();
-        lastFinalIndex=i+1;
-        if(chunk){
-          sessionSourceText += (sessionSourceText?" ":"")+chunk;
-          enqueueChunk(chunk);
-        }
-      } else interim += r[0].transcript;
+      const t=r[0].transcript.trim();
+      if(!t) continue;
+      if(r.isFinal) finals = mergeOverlap(finals,t);
+      else interim = mergeOverlap(interim,t);
     }
-    inText.textContent = sessionSourceText + (interim?" "+interim:"");
+    sessionSourceText = finals;
+    // queue only the new, not-yet-translated tail
+    if(finals.length > enqueuedLen){
+      const newPart = finals.slice(enqueuedLen).trim();
+      enqueuedLen = finals.length;
+      if(newPart) enqueueChunk(newPart);
+    }
+    const shown = interim ? mergeOverlap(finals,interim) : finals;
+    inText.classList.remove("placeholder");
+    inText.textContent = shown;
     inText.dir = activeSrc==="he" ? "rtl":"ltr";
   };
   rec.onerror = e=>{
@@ -290,8 +334,9 @@ function startListening(){
         return;
       }
       fetchExtras();
-      // wait for TTS to finish, then flip direction and listen again
+      // wait for TTS to finish, then record the turn, flip direction and listen again
       await waitForSpeech();
+      pushTurnToHistory();
       [activeSrc,activeDst]=[activeDst,activeSrc];
       activeBtn = (activeBtn===micBtn)?micBtnB:micBtn;
       startListening();
@@ -383,7 +428,7 @@ async function fetchExtras(){
     let raw = (data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("").trim();
     raw = raw.replace(/```json|```/g,"").trim();
     const obj = JSON.parse(raw);
-    if(obj.romaji) outRomaji.textContent = obj.romaji;
+    if(obj.romaji){outRomaji.textContent = obj.romaji; lastRomajiShown=obj.romaji;}
     if(Array.isArray(obj.replies) && obj.replies.length){
       repliesBox.style.display="";repliesList.innerHTML="";
       const userDir = userLang==="Hebrew"?"rtl":"ltr";
@@ -419,6 +464,7 @@ function toggleMic(btn, src, dst){
   if(listening){
     const same = activeBtn===btn;
     listeningStoppedManually=true;try{rec && rec.stop();}catch(e){};stopUI();fetchExtras();
+    setTimeout(pushTurnToHistory, 400);
     if(same) return; // tapped the active one: just stop
   }
   activeBtn=btn; activeSrc=src; activeDst=dst;
@@ -479,9 +525,12 @@ $("camStop").onclick=()=>{
   if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;}
   camBox.style.display="none";lastCamText="";
 };
+let camScanCount=0;
 async function captureAndTranslate(){
   if(camBusy || !camStream) return;
   camBusy=true;
+  camScanCount++;
+  if(camOut.classList.contains("placeholder")) camOut.textContent="Scanning… ("+camScanCount+")";
   try{
     const c=document.createElement("canvas");
     const w=camVideo.videoWidth, h=camVideo.videoHeight;
@@ -500,9 +549,21 @@ async function captureAndTranslate(){
         ]}]
       })
     });
+    if(!r.ok){
+      const t=await r.text().catch(()=>"");
+      camOut.classList.remove("placeholder");
+      camOut.textContent="Camera translate error: API "+r.status+(t?" — "+t.slice(0,120):"");
+      camBusy=false;return;
+    }
     const data = await r.json();
     let raw=(data.content||[]).filter(b=>b.type==="text").map(b=>b.text).join("").trim().replace(/```json|```/g,"").trim();
-    const obj = JSON.parse(raw);
+    let obj;
+    try{ obj = JSON.parse(raw); }
+    catch(pe){
+      camOut.classList.remove("placeholder");
+      camOut.textContent = raw ? raw.slice(0,300) : "Could not read a response — try again.";
+      camBusy=false;return;
+    }
     if(obj.en && obj.ja!==lastCamText){
       lastCamText=obj.ja;
       camOut.classList.remove("placeholder");
@@ -511,7 +572,10 @@ async function captureAndTranslate(){
     } else if(!obj.en && !lastCamText){
       camOut.textContent="No Japanese text detected yet…";
     }
-  }catch(e){ /* keep scanning silently */ }
+  }catch(e){
+    camOut.classList.remove("placeholder");
+    camOut.textContent="Camera translate error: "+(e.message||"unknown");
+  }
   camBusy=false;
 }
 
