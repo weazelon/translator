@@ -70,7 +70,8 @@
   .side{border:1.5px solid var(--line);background:var(--panel);border-radius:12px;padding:9px 12px;cursor:pointer;font-size:.85rem;font-weight:700;color:var(--ink)}
   .side.on{border-color:var(--ok);color:var(--ok)}
 
-  #repliesBox{border-color:var(--ok);border-width:2px}
+  #repliesBox{border-color:var(--ok);border-width:2px;max-height:34vh}
+  #repliesList{overflow-y:auto;flex:1;min-height:0;padding-inline-end:4px}
   #repliesBox .label{color:var(--ok)}
   .reply{border:1px solid var(--ok);border-radius:10px;padding:9px 11px;margin-top:8px;cursor:pointer;background:var(--reply-bg)}
   .reply:hover{border-color:var(--accent)}
@@ -100,7 +101,7 @@
 <div class="popup-wrap" id="popups"></div>
 <div class="app">
   <header>
-    <h1>Live Translator <small>v14</small></h1>
+    <h1>Live Translator <small>v16</small></h1>
     <div class="right">
       <button class="theme" id="themeBtn">🌙</button>
       <div class="status" id="status">Ready</div>
@@ -151,7 +152,7 @@
   <div class="controls">
     <button class="side" id="simulBtn">⚡ Simultaneous: OFF</button>
     <button class="side" id="convoBtn">🗣 Conversation: OFF</button>
-    <button class="side" id="autoSpeak">🔊 Auto-speak: ON</button>
+    <button class="side" id="autoSpeak">🔊 Auto-speak: OFF</button>
     <button class="side" id="camBtn">📷 Camera</button>
   </div>
 
@@ -182,7 +183,7 @@ const srcSel=$("srcLang"),dstSel=$("dstLang"),micBtn=$("micBtn"),micBtnB=$("micB
       autoSpeakBtn=$("autoSpeak"),convoBtn=$("convoBtn"),simulBtn=$("simulBtn"),
       histBox=$("histBox"),histList=$("histList"),repliesBox=$("repliesBox"),repliesList=$("repliesList");
 
-let listening=false,autoSpeak=true,rec=null;
+let listening=false,autoSpeak=false,rec=null;
 let convoMode=false,turnTimer=null;
 let activeSrc="en",activeDst="ja",activeBtn=null;
 let translatedSoFar="",pendingQueue=[],translating=false,sessionSourceText="",extrasTimer=null;
@@ -259,7 +260,6 @@ function refreshMicLabels(){
 }
 refreshMicLabels();
 
-autoSpeakBtn.classList.add("on");
 autoSpeakBtn.onclick=()=>{autoSpeak=!autoSpeak;autoSpeakBtn.textContent="🔊 Auto-speak: "+(autoSpeak?"ON":"OFF");autoSpeakBtn.classList.toggle("on",autoSpeak);};
 
 /* ---------- history ---------- */
@@ -434,15 +434,7 @@ async function fetchExtras(){
       if(lastTurnEl){const ro=lastTurnEl.querySelector(".ro");if(ro&&!ro.textContent)ro.textContent=obj.romaji;}
     }
     if(Array.isArray(obj.replies)&&obj.replies.length){
-      repliesBox.style.display="";repliesList.innerHTML="";
-      const dir=userLang==="Hebrew"?"rtl":"ltr";
-      for(const rep of obj.replies){
-        const d=document.createElement("div");
-        d.className="reply";
-        d.innerHTML='<div class="ja">'+escapeHtml(rep.ja||"")+'</div><div class="ro">'+escapeHtml(rep.romaji||"")+'</div><div class="mean" dir="'+dir+'">'+escapeHtml(rep.meaning||"")+'</div>';
-        d.onclick=()=>speak(rep.ja,"ja");
-        repliesList.appendChild(d);
-      }
+      addSuggestionSet(obj.replies, jaText, userLang==="Hebrew"?"rtl":"ltr");
     }
   }catch(e){/* extras are best-effort */}
 }
@@ -575,6 +567,22 @@ async function processSegment(blob){
   }catch(e){showErr("Simultaneous error: "+(e.message||"unknown"));}
 }
 
+function addSuggestionSet(replies, forText, dir){
+  repliesBox.style.display="";
+  const set=document.createElement("div");
+  set.innerHTML='<div class="label" style="margin-top:6px;opacity:.8">↳ replies to: '+escapeHtml((forText||"").slice(0,40))+'</div>';
+  for(const rep of replies){
+    const d=document.createElement("div");
+    d.className="reply";
+    d.innerHTML='<div class="ja">'+escapeHtml(rep.ja||"")+'</div><div class="ro">'+escapeHtml(rep.romaji||"")+'</div><div class="mean"'+(dir?' dir="'+dir+'"':'')+'>'+escapeHtml(rep.meaning||"")+'</div>';
+    d.onclick=()=>speak(rep.ja,"ja");
+    set.appendChild(d);
+  }
+  repliesList.prepend(set);
+  while(repliesList.children.length>5) repliesList.lastChild.remove(); // keep last 5 sets
+  repliesList.scrollTop=0;
+}
+
 let suggestBusy=false;
 async function simulSuggest(jaText){
   if(suggestBusy)return;suggestBusy=true;
@@ -586,14 +594,7 @@ async function simulSuggest(jaText){
     raw=raw.replace(/```json|```/g,"").trim();
     const obj=JSON.parse(raw);
     if(Array.isArray(obj.replies)&&obj.replies.length){
-      repliesBox.style.display="";repliesList.innerHTML="";
-      for(const rep of obj.replies){
-        const d=document.createElement("div");
-        d.className="reply";
-        d.innerHTML='<div class="ja">'+escapeHtml(rep.ja||"")+'</div><div class="ro">'+escapeHtml(rep.romaji||"")+'</div><div class="mean">'+escapeHtml(rep.meaning||"")+'</div>';
-        d.onclick=()=>speak(rep.ja,"ja");
-        repliesList.appendChild(d);
-      }
+      addSuggestionSet(obj.replies, jaText);
     }
   }catch(e){/* best-effort */}
   suggestBusy=false;
