@@ -46,6 +46,9 @@
   .turn{border-inline-start:3px solid var(--line);padding:6px 10px;margin-bottom:8px}
   .turn.a{border-color:var(--accent)}
   .turn.b{border-color:#7a3fd4}
+  .turn .who{font-size:.72rem;font-weight:800;letter-spacing:.02em;opacity:.85;margin-bottom:2px}
+  .turn.a .who{color:var(--accent)}
+  .turn.b .who{color:#a884e8}
   .turn .src{font-size:.9rem;color:var(--muted)}
   .turn .dst{font-size:1.08rem;font-weight:600}
   .turn .ro{font-size:.88rem;color:var(--muted);font-style:italic}
@@ -101,7 +104,7 @@
 <div class="popup-wrap" id="popups"></div>
 <div class="app">
   <header>
-    <h1>Live Translator <small>v26</small></h1>
+    <h1>Live Translator <small>v27</small></h1>
     <div class="right">
       <button class="theme" id="themeBtn">🌙</button>
       <div class="status" id="status">Ready</div>
@@ -293,18 +296,22 @@ refreshMicLabels();
 autoSpeakBtn.onclick=()=>{autoSpeak=!autoSpeak;autoSpeakBtn.textContent="🔊 Auto-speak: "+(autoSpeak?"ON":"OFF");autoSpeakBtn.classList.toggle("on",autoSpeak);};
 
 /* ---------- history ---------- */
-function pushTurn(cls,srcText,dstText,ro){
+function pushTurn(cls,srcText,dstText,ro,srcLangCode){
   histBox.style.display="";
   const d=document.createElement("div");
   d.className="turn "+cls;
-  d.innerHTML='<div class="src">'+escapeHtml(srcText)+'</div><div class="dst">'+escapeHtml(dstText)+'</div><div class="ro">'+escapeHtml(ro||"")+'</div>';
-  histList.prepend(d);          // newest first
-  histList.scrollTop=0;         // scroll INSIDE the box
+  const who = srcLangCode ? (LANG[srcLangCode]?LANG[srcLangCode].label:srcLangCode) : (cls==="a"?LANG[activeSrc].label:LANG[activeSrc].label);
+  d.innerHTML='<div class="who">🗣 '+escapeHtml(who)+'</div>'
+    +'<div class="dst">'+escapeHtml(dstText)+'</div>'
+    +'<div class="src">'+escapeHtml(srcText)+'</div>'
+    +'<div class="ro">'+escapeHtml(ro||"")+'</div>';
+  histList.prepend(d);
+  histList.scrollTop=0;
   return d;
 }
 function pushTurnToHistory(){
   if(!sessionSourceText||!translatedSoFar)return;
-  lastTurnEl=pushTurn(activeBtn===micBtnB?"b":"a",sessionSourceText,translatedSoFar,"");
+  lastTurnEl=pushTurn(activeBtn===micBtnB?"b":"a",sessionSourceText,translatedSoFar,"",activeSrc);
 }
 
 /* ---------- speech recognition (mic buttons + conversation) ---------- */
@@ -569,7 +576,7 @@ async function processSegment(blob){
     if(junk.some(j=>tl===j.toLowerCase().replace(/[。、!?！？\s]+$/,"")))return;
     let segSrc=/[\u3040-\u30ff\u4e00-\u9fff]/.test(text)?"ja":/[\u0590-\u05ff]/.test(text)?"he":"en";
     const segDst=segSrc==="en"?"ja":"en";
-    const placeholder=pushTurn(segSrc==="en"?"a":"b",text,"…","");
+    const placeholder=pushTurn(segSrc==="en"?"a":"b",text,"…","",segSrc);
     // ONE call: translation + romaji + (for Japanese input) suggested replies
     let raw;
     try{
@@ -586,6 +593,11 @@ segSrc==="ja"?700:300);
       try{obj.t=await aiChat('Translate to natural English, reply with the English translation only: '+text,200);}catch(e){}
     }
     if(/[\u3040-\u30ff\u4e00-\u9fff]/.test(obj.r||""))obj.r="";
+    const jaSide2 = segSrc==="ja" ? text : (segDst==="ja" ? (obj.t||"") : "");
+    if(jaSide2 && !obj.r){
+      try{obj.r=await aiChat("Romanize this Japanese into Hepburn romaji. Reply with the romaji only, Latin letters: "+jaSide2,150);}catch(e){}
+      if(/[\u3040-\u30ff\u4e00-\u9fff]/.test(obj.r||""))obj.r="";
+    }
     placeholder.querySelector(".dst").textContent=obj.t||"";
     placeholder.querySelector(".ro").textContent=obj.r||"";
     if(segSrc==="ja"&&Array.isArray(obj.replies)&&obj.replies.length)addSuggestionSet(obj.replies,text);
