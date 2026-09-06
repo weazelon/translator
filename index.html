@@ -104,7 +104,7 @@
 <div class="popup-wrap" id="popups"></div>
 <div class="app">
   <header>
-    <h1>Live Translator <small>v27</small></h1>
+    <h1>Live Translator <small>v28</small></h1>
     <div class="right">
       <button class="theme" id="themeBtn">🌙</button>
       <div class="status" id="status">Ready</div>
@@ -265,15 +265,19 @@ function updateUsageLine(){
 }
 
 /* ---------- OpenAI helpers ---------- */
-async function aiChat(userContent,maxTokens){
+const PRICE4O={in:2.50/1e6,out:10.0/1e6};
+async function aiChat(userContent,maxTokens,model){
   const r=await fetch("https://api.openai.com/v1/chat/completions",{
     method:"POST",
     headers:{"Content-Type":"application/json","Authorization":"Bearer "+$("oaiKey").value.trim()},
-    body:JSON.stringify({model:"gpt-4o-mini",max_tokens:maxTokens||800,messages:[{role:"user",content:userContent}]})
+    body:JSON.stringify({model:model||"gpt-4o-mini",max_tokens:maxTokens||800,messages:[{role:"user",content:userContent}]})
   });
   if(!r.ok){const t=await r.text().catch(()=>"");throw new Error("API "+r.status+(t?": "+t.slice(0,160):""));}
   const d=await r.json();
-  if(d.usage)addSpend((d.usage.prompt_tokens||0)*PRICE.chat_in+(d.usage.completion_tokens||0)*PRICE.chat_out);
+  if(d.usage){
+    const p=(model==="gpt-4o")?{i:PRICE4O.in,o:PRICE4O.out}:{i:PRICE.chat_in,o:PRICE.chat_out};
+    addSpend((d.usage.prompt_tokens||0)*p.i+(d.usage.completion_tokens||0)*p.o);
+  }
   return (d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content||"").trim();
 }
 
@@ -442,7 +446,8 @@ async function translateChunk(text){
     const out=await aiChat(
 "Translate this "+src+" speech segment into "+dst+". "+
 (translatedSoFar?("Earlier context (do not repeat): "+translatedSoFar+"\n"):"")+
-"IMPORTANT: your entire reply must be written in "+dst+" only. No romaji, no explanations, no quotes.\nSegment: "+text,600);
+(activeDst==="ja"?"Make the Japanese sound like a native speaker in casual real conversation: natural word choice and particles, contractions where natural (してる not している), casual register unless clearly formal. Never stiff textbook Japanese. ":"")+
+"IMPORTANT: your entire reply must be written in "+dst+" only. No romaji, no explanations, no quotes.\nSegment: "+text,600, activeDst==="ja"?"gpt-4o":"gpt-4o-mini");
     if(!out)throw new Error("empty response");
     translatedSoFar+=(translatedSoFar?" ":"")+out;
     outText.classList.remove("placeholder");
@@ -581,11 +586,13 @@ async function processSegment(blob){
     let raw;
     try{
       raw=await aiChat(
-'Live conversation. Someone said in '+LANG[segSrc].name+': "'+text.replace(/"/g,"'")+'"\n'+
+'Live spoken conversation. Someone said in '+LANG[segSrc].name+': "'+text.replace(/"/g,"'")+'"\n'+
 'Respond ONLY with valid JSON, no fences: {"t":"translation in '+LANG[segDst].name+'","r":"Hepburn romaji (Latin letters ONLY) of the Japanese side"'
 +(segSrc==="ja"?',"replies":[{"ja":"short natural Japanese reply","romaji":"Latin letters only","meaning":"in English"},{"ja":"...","romaji":"...","meaning":"..."},{"ja":"...","romaji":"...","meaning":"..."}]':'')
-+'}\nRules: "t" must be '+LANG[segDst].name+' only'+(segDst==="en"?' with no Japanese characters':'')+'. "r" must never contain Japanese characters.',
-segSrc==="ja"?700:300);
++'}\nRules: "t" must be '+LANG[segDst].name+' only'+(segDst==="en"?' with no Japanese characters':'')
++(segDst==="ja"?'. The Japanese must sound like a NATIVE speaker talking casually in real conversation: natural word choice, natural particles, contractions where natural (してる not している), casual register unless the content is clearly formal. Never stiff textbook Japanese.':'')
++'. "r" must never contain Japanese characters.',
+segSrc==="ja"?700:350, segDst==="ja"?"gpt-4o":"gpt-4o-mini");
     }catch(e){placeholder.remove();showErr("Translation error — "+(e.message||""));return;}
     raw=raw.replace(/```json|```/g,"").trim();
     let obj;try{obj=JSON.parse(raw);}catch(e){obj={t:raw,r:""};}
