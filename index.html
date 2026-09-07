@@ -8,23 +8,10 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <title>Live Translator</title>
 <style>
-  :root{
-    --ink:#1c2230; --paper:#eef1f6; --panel:#ffffff;
-    --accent:#2456d6; --accent-soft:#dbe5fb;
-    --live:#d6244e; --ok:#1a8a5c; --line:#c7cedd; --muted:#5a6172;
-    --reply-bg:#fafbfe;
-    --err-bg:#fdecef; --err-line:#f3b8c6; --err-ink:#8f1735;
-  }
-  body.dark{
-    --ink:#e8ebf4; --paper:#12151d; --panel:#1c2130;
-    --accent:#6f96ff; --accent-soft:#26304a;
-    --live:#ff5c82; --ok:#4cd396; --line:#333b52; --muted:#9aa2b8;
-    --reply-bg:#171c29;
-    --err-bg:#3a1620; --err-line:#6d2436; --err-ink:#ffb3c2;
-  }
+  :root{--ink:#1c2230;--paper:#eef1f6;--panel:#ffffff;--accent:#2456d6;--accent-soft:#dbe5fb;--live:#d6244e;--ok:#1a8a5c;--line:#c7cedd;--muted:#5a6172;--reply-bg:#fafbfe;--err-bg:#fdecef;--err-line:#f3b8c6;--err-ink:#8f1735;--purple:#7a3fd4;--purple-soft:#a884e8}
+  body.dark{--ink:#e8ebf4;--paper:#12151d;--panel:#1c2130;--accent:#6f96ff;--accent-soft:#26304a;--live:#ff5c82;--ok:#4cd396;--line:#333b52;--muted:#9aa2b8;--reply-bg:#171c29;--err-bg:#3a1620;--err-line:#6d2436;--err-ink:#ffb3c2}
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:"Segoe UI","Heebo","Hiragino Sans",Arial,sans-serif;background:var(--paper);color:var(--ink);
-    min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:12px;transition:background .2s,color .2s}
+  body{font-family:"Segoe UI","Heebo","Hiragino Sans",Arial,sans-serif;background:var(--paper);color:var(--ink);min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:12px;transition:background .2s,color .2s}
   .app{width:100%;max-width:560px;display:flex;flex-direction:column;gap:12px}
   header{display:flex;align-items:center;justify-content:space-between}
   header h1{font-size:1.25rem;font-weight:800}
@@ -33,121 +20,68 @@
   .status{font-size:.82rem;color:var(--muted)}
   .status.live{color:var(--live);font-weight:700}
   .theme{border:1.5px solid var(--line);background:var(--panel);border-radius:10px;width:36px;height:36px;font-size:1rem;cursor:pointer}
-
   .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:6px}
   .label{font-size:.78rem;color:var(--muted);font-weight:700}
   .text{font-size:1.15rem;line-height:1.45;word-break:break-word}
   .text.placeholder{color:var(--muted);opacity:.7}
   .romaji{font-size:.95rem;color:var(--muted);font-style:italic;direction:ltr;text-align:left}
-
-  /* history scrolls INSIDE its own frame */
   #histBox{max-height:38vh}
   #histList{overflow-y:auto;flex:1;min-height:0;padding-inline-end:4px}
   .turn{border-inline-start:3px solid var(--line);padding:6px 10px;margin-bottom:8px}
-  .turn.a{border-color:var(--accent)}
-  .turn.b{border-color:#7a3fd4}
-  .turn .who{font-size:.72rem;font-weight:800;letter-spacing:.02em;opacity:.85;margin-bottom:2px}
-  .turn.a .who{color:var(--accent)}
-  .turn.b .who{color:#a884e8}
-  .turn .src{font-size:.9rem;color:var(--muted)}
+  .turn.a{border-color:var(--accent)} .turn.b{border-color:var(--purple)}
+  .turn .who{font-size:.72rem;font-weight:800;opacity:.85;margin-bottom:2px}
+  .turn.a .who{color:var(--accent)} .turn.b .who{color:var(--purple-soft)}
   .turn .dst{font-size:1.08rem;font-weight:600}
+  .turn .src{font-size:.9rem;color:var(--muted)}
   .turn .ro{font-size:.88rem;color:var(--muted);font-style:italic}
-
-  #outBox{border-color:var(--accent);border-width:2px}
-  #outBox .label{color:var(--accent)}
-  #inBox{max-height:16vh}
-  #inText{overflow-y:auto}
-
+  #outBox{border-color:var(--accent);border-width:2px} #outBox .label{color:var(--accent)}
+  #inBox{max-height:16vh} #inText{overflow-y:auto}
+  #repliesBox{border-color:var(--ok);border-width:2px;max-height:34vh} #repliesBox .label{color:var(--ok)}
+  #repliesList{overflow-y:auto;flex:1;min-height:0;padding-inline-end:4px}
+  .reply{border:1px solid var(--ok);border-radius:10px;padding:9px 11px;margin-top:8px;cursor:pointer;background:var(--reply-bg)}
+  .reply .ja{font-size:1.05rem;font-weight:700} .reply .ro{font-size:.9rem;color:var(--muted);font-style:italic} .reply .mean{font-size:.9rem;color:var(--ok)}
   .pair{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px;display:flex;align-items:center;gap:8px;justify-content:center}
   select{font-size:1rem;font-weight:700;padding:8px 10px;border-radius:10px;border:1.5px solid var(--line);background:var(--panel);color:var(--ink)}
   .swap{border:none;background:var(--accent-soft);color:var(--accent);width:40px;height:40px;border-radius:50%;font-size:1.1rem;cursor:pointer}
-
   .controls{display:flex;gap:8px;align-items:stretch;justify-content:center;flex-wrap:wrap}
-  .mic{flex:1;max-width:220px;min-width:140px;height:68px;border-radius:18px;border:none;cursor:pointer;background:var(--accent);color:#fff;
-    box-shadow:0 5px 14px rgba(36,86,214,.35);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
-  .mic .micIcon{font-size:1.3rem}
-  .mic .micLbl{font-size:.82rem;font-weight:800}
-  .mic-b{background:#7a3fd4;box-shadow:0 5px 14px rgba(122,63,212,.35)}
+  .mic{flex:1;max-width:220px;min-width:140px;height:68px;border-radius:18px;border:none;cursor:pointer;background:var(--accent);color:#fff;box-shadow:0 5px 14px rgba(36,86,214,.35);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+  .mic .micIcon{font-size:1.3rem} .mic .micLbl{font-size:.82rem;font-weight:800}
+  .mic-b{background:var(--purple);box-shadow:0 5px 14px rgba(122,63,212,.35)}
   .mic.listening{background:var(--live);animation:pulse 1.4s infinite}
   @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(214,36,78,.45)}70%{box-shadow:0 0 0 18px rgba(214,36,78,0)}100%{box-shadow:0 0 0 0 rgba(214,36,78,0)}}
   .side{border:1.5px solid var(--line);background:var(--panel);border-radius:12px;padding:9px 12px;cursor:pointer;font-size:.85rem;font-weight:700;color:var(--ink)}
   .side.on{border-color:var(--ok);color:var(--ok)}
-
-  #repliesBox{border-color:var(--ok);border-width:2px;max-height:34vh}
-  #repliesList{overflow-y:auto;flex:1;min-height:0;padding-inline-end:4px}
-  #repliesBox .label{color:var(--ok)}
-  .reply{border:1px solid var(--ok);border-radius:10px;padding:9px 11px;margin-top:8px;cursor:pointer;background:var(--reply-bg)}
-  .reply:hover{border-color:var(--accent)}
-  .reply .ja{font-size:1.05rem;font-weight:700}
-  .reply .ro{font-size:.9rem;color:var(--muted);font-style:italic}
-  .reply .mean{font-size:.9rem;color:var(--ok)}
-
   .hint{text-align:center;font-size:.8rem;color:var(--muted)}
-  .err{display:none;background:var(--err-bg);border:1px solid var(--err-line);color:var(--err-ink);border-radius:12px;padding:10px 12px;font-size:.88rem}
-  .err.show{display:block}
-
+  .err{display:none;background:var(--err-bg);border:1px solid var(--err-line);color:var(--err-ink);border-radius:12px;padding:10px 12px;font-size:.88rem} .err.show{display:block}
   .popup-wrap{position:fixed;top:10px;left:10px;right:10px;z-index:999;display:flex;flex-direction:column;gap:8px;pointer-events:none}
-  .popup{pointer-events:auto;border-radius:12px;padding:11px 13px;font-size:.9rem;line-height:1.4;box-shadow:0 8px 24px rgba(0,0,0,.45);
-    display:flex;gap:10px;align-items:flex-start;animation:pin .2s}
+  .popup{pointer-events:auto;border-radius:12px;padding:11px 13px;font-size:.9rem;line-height:1.4;box-shadow:0 8px 24px rgba(0,0,0,.45);display:flex;gap:10px;align-items:flex-start;animation:pin .2s}
   @keyframes pin{from{transform:translateY(-8px);opacity:0}to{transform:none;opacity:1}}
   .popup .tag{font-weight:800;font-size:.72rem;padding:2px 8px;border-radius:8px;white-space:nowrap}
-  .popup.app{background:#3a1620;border:1px solid #6d2436;color:#ffb3c2}
-  .popup.app .tag{background:#6d2436;color:#fff}
-  .popup.api{background:#3a2a10;border:1px solid #6d5324;color:#ffd9a0}
-  .popup.api .tag{background:#6d5324;color:#fff}
-  .popup.net{background:#10283a;border:1px solid #24506d;color:#a0d4ff}
-  .popup.net .tag{background:#24506d;color:#fff}
+  .popup.app{background:#3a1620;border:1px solid #6d2436;color:#ffb3c2} .popup.app .tag{background:#6d2436;color:#fff}
+  .popup.api{background:#3a2a10;border:1px solid #6d5324;color:#ffd9a0} .popup.api .tag{background:#6d5324;color:#fff}
+  .popup.net{background:#10283a;border:1px solid #24506d;color:#a0d4ff} .popup.net .tag{background:#24506d;color:#fff}
   .popup .x{margin-inline-start:auto;background:none;border:none;color:inherit;font-size:1rem;cursor:pointer}
+  input[type=password],input[type=number]{padding:10px;border-radius:10px;border:1.5px solid var(--line);background:var(--panel);color:var(--ink);font-size:.95rem}
 </style>
 </head>
 <body>
 <div class="popup-wrap" id="popups"></div>
 <div class="app">
   <header>
-    <h1>Live Translator <small>v28</small></h1>
-    <div class="right">
-      <button class="theme" id="themeBtn">🌙</button>
-      <div class="status" id="status">Ready</div>
-    </div>
+    <h1>Live Translator <small>v30</small></h1>
+    <div class="right"><button class="theme" id="themeBtn">🌙</button><div class="status" id="status">Ready</div></div>
   </header>
 
-  <!-- RESULTS ON TOP -->
-  <div class="box" id="histBox" style="display:none">
-    <div class="label">Conversation (newest first)</div>
-    <div id="histList"></div>
-  </div>
+  <div class="box" id="histBox" style="display:none"><div class="label">Conversation (newest first)</div><div id="histList"></div></div>
+  <div class="box" id="repliesBox" style="display:none"><div class="label">💬 Suggested replies — tap to hear in Japanese</div><div id="repliesList"></div></div>
+  <div class="box" id="outBox"><div class="label">Translation</div><div class="text placeholder" id="outText">…</div><div class="romaji" id="outRomaji"></div></div>
+  <div class="box" id="inBox"><div class="label">Heard</div><div class="text placeholder" id="inText">Tap a mic and speak…</div></div>
 
-  <div class="box" id="repliesBox" style="display:none">
-    <div class="label">💬 Suggested replies — tap to hear in Japanese</div>
-    <div id="repliesList"></div>
-  </div>
-
-  <div class="box" id="outBox">
-    <div class="label">Translation</div>
-    <div class="text placeholder" id="outText">…</div>
-    <div class="romaji" id="outRomaji"></div>
-  </div>
-
-  <div class="box" id="inBox">
-    <div class="label">Heard</div>
-    <div class="text placeholder" id="inText">Tap a mic and speak…</div>
-  </div>
-
-  <!-- CONTROLS BELOW -->
   <div class="pair">
-    <select id="srcLang">
-      <option value="en" selected>English</option>
-      <option value="ja">日本語 Japanese</option>
-      <option value="he">עברית Hebrew</option>
-    </select>
+    <select id="srcLang"><option value="en" selected>English</option><option value="ja">日本語 Japanese</option><option value="he">עברית Hebrew</option></select>
     <button class="swap" id="swapBtn">⇄</button>
-    <select id="dstLang">
-      <option value="en">English</option>
-      <option value="ja" selected>日本語 Japanese</option>
-      <option value="he">עברית Hebrew</option>
-    </select>
+    <select id="dstLang"><option value="en">English</option><option value="ja" selected>日本語 Japanese</option><option value="he">עברית Hebrew</option></select>
   </div>
-
   <div class="controls">
     <button class="mic" id="micBtn"><span class="micIcon">🎤</span><span class="micLbl" id="micLblA">EN → JA</span></button>
     <button class="mic mic-b" id="micBtnB"><span class="micIcon">🎤</span><span class="micLbl" id="micLblB">JA → EN</span></button>
@@ -165,11 +99,7 @@
       <video id="camVideo" autoplay playsinline muted style="width:100%;display:block"></video>
       <div id="camOverlay" style="position:absolute;inset:0;pointer-events:none"></div>
     </div>
-    <div style="display:flex;gap:10px;align-items:center;margin-top:6px">
-      <span class="label">🔍 Zoom</span>
-      <input type="range" id="camZoom" min="1" max="3" step="0.1" value="1" style="flex:1">
-      <span class="label" id="camZoomVal">1.0×</span>
-    </div>
+    <div style="display:flex;gap:10px;align-items:center;margin-top:6px"><span class="label">🔍 Zoom</span><input type="range" id="camZoom" min="1" max="3" step="0.1" value="1" style="flex:1"><span class="label" id="camZoomVal">1.0×</span></div>
     <div class="hint" id="camStatus" style="text-align:start"></div>
     <div class="controls" style="margin-top:6px"><button class="side" id="camStop">✖ Stop camera</button></div>
   </div>
@@ -178,662 +108,442 @@
 
   <details class="box" style="min-height:0">
     <summary class="label" style="cursor:pointer">⚙️ Settings — OpenAI API key</summary>
-    <input type="password" id="oaiKey" placeholder="OpenAI API key: sk-..." style="margin-top:8px;padding:10px;border-radius:10px;border:1.5px solid var(--line);background:var(--panel);color:var(--ink);font-size:.95rem;width:100%">
+    <input type="password" id="oaiKey" placeholder="OpenAI API key: sk-..." style="margin-top:8px;width:100%">
     <div class="hint" style="text-align:start;margin-top:6px">Stored on this device only.</div>
-    <div style="display:flex;gap:8px;align-items:center;margin-top:8px">
-      <span class="label">Budget $</span>
-      <input type="number" id="budgetUsd" value="5" min="1" step="1" style="width:70px;padding:8px;border-radius:10px;border:1.5px solid var(--line);background:var(--panel);color:var(--ink)">
+    <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
+      <span class="label">Budget $</span><input type="number" id="budgetUsd" value="5" min="1" step="1" style="width:70px">
       <span class="hint" id="usageLine" style="text-align:start"></span>
       <button class="side" id="usageReset" style="margin-inline-start:auto">Reset counter</button>
     </div>
   </details>
-
   <div class="hint">Works best in Chrome / Android Chrome.</div>
 </div>
 
 <script>
+/* ================= basics ================= */
 const LANG={en:{name:"English",bcp:"en-US",label:"English"},ja:{name:"Japanese",bcp:"ja-JP",label:"日本語"},he:{name:"Hebrew",bcp:"he-IL",label:"עברית"}};
+const JA_RE=/[\u3040-\u30ff\u4e00-\u9fff]/, HE_RE=/[\u0590-\u05ff]/;
 const $=id=>document.getElementById(id);
-const srcSel=$("srcLang"),dstSel=$("dstLang"),micBtn=$("micBtn"),micBtnB=$("micBtnB"),
-      inText=$("inText"),outText=$("outText"),outRomaji=$("outRomaji"),statusEl=$("status"),errEl=$("err"),
-      autoSpeakBtn=$("autoSpeak"),convoBtn=$("convoBtn"),simulBtn=$("simulBtn"),
+const srcSel=$("srcLang"),dstSel=$("dstLang"),micBtn=$("micBtn"),micBtnB=$("micBtnB"),inText=$("inText"),outText=$("outText"),outRomaji=$("outRomaji"),
+      statusEl=$("status"),errEl=$("err"),autoSpeakBtn=$("autoSpeak"),convoBtn=$("convoBtn"),simulBtn=$("simulBtn"),
       histBox=$("histBox"),histList=$("histList"),repliesBox=$("repliesBox"),repliesList=$("repliesList");
+const esc=x=>String(x).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const stripFences=x=>x.replace(/```json|```/g,"").trim();
+function setStatus(t,live){statusEl.textContent=t;statusEl.classList.toggle("live",!!live);}
 
-let listening=false,autoSpeak=false,rec=null;
-let convoMode=false,turnTimer=null;
-let activeSrc="en",activeDst="ja",activeBtn=null;
-let translatedSoFar="",pendingQueue=[],translating=false,sessionSourceText="",extrasTimer=null;
-let translationFailed=false,displayDirty=false,lastTurnEl=null,listeningStoppedManually=false;
-
-/* ---------- errors ---------- */
-function escapeHtml(x){return String(x).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));}
+/* ================= errors ================= */
 function classifyError(msg){
   const m=String(msg).toLowerCase();
-  if(m.includes("api 401")||m.includes("invalid_api_key")||m.includes("incorrect api key"))return{kind:"api",tag:"OPENAI",text:"Invalid API key. Check ⚙️ Settings."};
-  if(m.includes("api 429")||m.includes("insufficient_quota")||m.includes("quota"))return{kind:"api",tag:"OPENAI",text:"Out of credit or rate-limited. Check billing at platform.openai.com."};
-  if(m.includes("api 50")||m.includes("api 52")||m.includes("api 53"))return{kind:"api",tag:"OPENAI",text:"OpenAI servers are struggling — retry in a minute."};
+  if(m.includes("api 401")||m.includes("invalid_api_key"))return{kind:"api",tag:"OPENAI",text:"Invalid API key. Check ⚙️ Settings."};
+  if(m.includes("api 429")||m.includes("quota"))return{kind:"api",tag:"OPENAI",text:"Out of credit or rate-limited. Check billing at platform.openai.com."};
+  if(/api 5\d\d/.test(m))return{kind:"api",tag:"OPENAI",text:"OpenAI servers are struggling — retry in a minute."};
   if(m.includes("api "))return{kind:"api",tag:"OPENAI",text:"OpenAI error: "+msg};
   if(m.includes("failed to fetch")||m.includes("networkerror")||m.includes("load failed"))return{kind:"net",tag:"NETWORK",text:"No connection — check internet."};
   if(m.includes("mic permission")||m.includes("not-allowed"))return{kind:"app",tag:"DEVICE",text:"Microphone blocked — allow mic for this site in Chrome."};
   if(m.includes("camera"))return{kind:"app",tag:"DEVICE",text:msg};
-  if(m.includes("speech recognition network"))return{kind:"app",tag:"BROWSER",text:"Chrome speech service unreachable — use real Google Chrome online."};
   return{kind:"app",tag:"APP BUG",text:msg+" — screenshot this and send it to Claude."};
 }
 function popup(kind,tag,text){
-  const w=$("popups"),d=document.createElement("div");
-  d.className="popup "+kind;
-  d.innerHTML='<span class="tag">'+tag+'</span><span>'+escapeHtml(text)+'</span><button class="x">✕</button>';
-  d.querySelector(".x").onclick=()=>d.remove();
-  w.appendChild(d);while(w.children.length>3)w.firstChild.remove();
+  const w=$("popups"),d=document.createElement("div");d.className="popup "+kind;
+  d.innerHTML='<span class="tag">'+tag+'</span><span>'+esc(text)+'</span><button class="x">✕</button>';
+  d.querySelector(".x").onclick=()=>d.remove();w.appendChild(d);while(w.children.length>3)w.firstChild.remove();
   setTimeout(()=>{if(d.parentNode)d.remove();},12000);
 }
 function showErr(msg){const c=classifyError(msg);popup(c.kind,c.tag,c.text);errEl.textContent=c.text;errEl.classList.add("show");}
 function clearErr(){errEl.classList.remove("show");}
 window.addEventListener("error",e=>popup("app","APP BUG",(e.message||"Unknown script error")+" — screenshot this and send it to Claude."));
-window.addEventListener("unhandledrejection",e=>{showErr((e.reason&&e.reason.message)||String(e.reason||"Unknown error"));});
+window.addEventListener("unhandledrejection",e=>showErr((e.reason&&e.reason.message)||String(e.reason||"Unknown error")));
 
-function setStatus(t,live){statusEl.textContent=t;statusEl.classList.toggle("live",!!live);}
-
-/* ---------- theme ---------- */
+/* ================= theme / key / budget ================= */
 const themeBtn=$("themeBtn");
 function applyTheme(dark){document.body.classList.toggle("dark",dark);themeBtn.textContent=dark?"☀️":"🌙";}
 let darkPref=matchMedia("(prefers-color-scheme: dark)").matches;applyTheme(darkPref);
 themeBtn.onclick=()=>{darkPref=!darkPref;applyTheme(darkPref);};
 
-/* ---------- key ---------- */
 const savedOai=localStorage.getItem("lt_oai_key");if(savedOai)$("oaiKey").value=savedOai;
 $("oaiKey").addEventListener("change",()=>localStorage.setItem("lt_oai_key",$("oaiKey").value.trim()));
-function keyCheck(){
-  if(!$("oaiKey").value.trim()){showErr("No API key set. Open ⚙️ Settings and paste your OpenAI key.");return false;}
-  return true;
-}
+const key=()=>$("oaiKey").value.trim();
+function keyCheck(){if(!key()){showErr("No API key set. Open ⚙️ Settings and paste your OpenAI key.");return false;}return true;}
 
-/* ---------- spend tracking (local estimate) ---------- */
-const PRICE={chat_in:0.15/1e6, chat_out:0.60/1e6, stt_min:0.003}; // gpt-4o-mini + mini-transcribe
-let spentUsd=parseFloat(localStorage.getItem("lt_spent")||"0");
-function budget(){return parseFloat(($("budgetUsd")&&$("budgetUsd").value)||"5")||5;}
-let warned80=false,warned95=false;
+const PRICE={mini_in:0.15/1e6,mini_out:0.60/1e6,o_in:2.5/1e6,o_out:10/1e6,stt_min:0.003};
+let spentUsd=parseFloat(localStorage.getItem("lt_spent")||"0"),warned80=false,warned95=false;
+const budget=()=>parseFloat($("budgetUsd").value)||5;
 function addSpend(u){
-  spentUsd+=u;localStorage.setItem("lt_spent",spentUsd.toFixed(6));
-  updateUsageLine();
+  spentUsd+=u;localStorage.setItem("lt_spent",spentUsd.toFixed(6));updateUsageLine();
   const b=budget(),p=spentUsd/b;
-  if(p>=0.95&&!warned95){warned95=true;popup("api","OPENAI","⚠️ ~95% of your $"+b+" budget used (est. $"+spentUsd.toFixed(2)+"). Top up at platform.openai.com or translations will stop soon.");}
+  if(p>=0.95&&!warned95){warned95=true;popup("api","OPENAI","⚠️ ~95% of your $"+b+" budget used (est. $"+spentUsd.toFixed(2)+"). Top up at platform.openai.com.");}
   else if(p>=0.8&&!warned80){warned80=true;popup("api","OPENAI","Heads up: ~80% of your $"+b+" budget used (est. $"+spentUsd.toFixed(2)+").");}
 }
-function updateUsageLine(){
-  const el=$("usageLine");if(el)el.textContent="used ≈ $"+spentUsd.toFixed(2)+" of $"+budget();
-}
+function updateUsageLine(){$("usageLine").textContent="used ≈ $"+spentUsd.toFixed(2)+" of $"+budget();}
+$("usageReset").onclick=()=>{spentUsd=0;warned80=warned95=false;localStorage.setItem("lt_spent","0");updateUsageLine();};
+const savedBudget=localStorage.getItem("lt_budget");if(savedBudget)$("budgetUsd").value=savedBudget;
+$("budgetUsd").addEventListener("change",()=>{localStorage.setItem("lt_budget",$("budgetUsd").value);warned80=warned95=false;updateUsageLine();});
+updateUsageLine();
 
-/* ---------- OpenAI helpers ---------- */
-const PRICE4O={in:2.50/1e6,out:10.0/1e6};
-async function aiChat(userContent,maxTokens,model){
-  const r=await fetch("https://api.openai.com/v1/chat/completions",{
-    method:"POST",
-    headers:{"Content-Type":"application/json","Authorization":"Bearer "+$("oaiKey").value.trim()},
-    body:JSON.stringify({model:model||"gpt-4o-mini",max_tokens:maxTokens||800,messages:[{role:"user",content:userContent}]})
-  });
+/* ================= OpenAI ================= */
+const NATIVE_JA="Sound like a native Japanese speaker in casual real conversation: natural word choice and particles, contractions where natural (してる not している), casual register unless the content is clearly formal. Never stiff textbook Japanese.";
+async function ai(content,maxTokens,model,jsonMode){
+  const body={model:model||"gpt-4o-mini",max_tokens:maxTokens||300,temperature:0.3,messages:[{role:"user",content}]};
+  if(jsonMode)body.response_format={type:"json_object"};
+  const r=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key()},body:JSON.stringify(body)});
   if(!r.ok){const t=await r.text().catch(()=>"");throw new Error("API "+r.status+(t?": "+t.slice(0,160):""));}
   const d=await r.json();
-  if(d.usage){
-    const p=(model==="gpt-4o")?{i:PRICE4O.in,o:PRICE4O.out}:{i:PRICE.chat_in,o:PRICE.chat_out};
-    addSpend((d.usage.prompt_tokens||0)*p.i+(d.usage.completion_tokens||0)*p.o);
-  }
+  if(d.usage){const o=(model==="gpt-4o");addSpend((d.usage.prompt_tokens||0)*(o?PRICE.o_in:PRICE.mini_in)+(d.usage.completion_tokens||0)*(o?PRICE.o_out:PRICE.mini_out));}
   return (d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content||"").trim();
 }
-
-/* ---------- pair selectors ---------- */
-function ensureDifferent(changed){
-  if(srcSel.value===dstSel.value){
-    const other=["en","ja","he"].find(l=>l!==srcSel.value);
-    (changed==="src"?dstSel:srcSel).value=other;
+async function aiStream(content,maxTokens,model,onDelta){
+  const body={model:model||"gpt-4o-mini",max_tokens:maxTokens||300,temperature:0.3,stream:true,stream_options:{include_usage:true},messages:[{role:"user",content}]};
+  const r=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key()},body:JSON.stringify(body)});
+  if(!r.ok){const t=await r.text().catch(()=>"");throw new Error("API "+r.status+(t?": "+t.slice(0,160):""));}
+  const reader=r.body.getReader(),dec=new TextDecoder();let buf="",full="";
+  while(true){
+    const {done,value}=await reader.read();if(done)break;
+    buf+=dec.decode(value,{stream:true});
+    let idx;
+    while((idx=buf.indexOf("\n"))>=0){
+      const line=buf.slice(0,idx).trim();buf=buf.slice(idx+1);
+      if(!line.startsWith("data:"))continue;
+      const data=line.slice(5).trim();if(data==="[DONE]")continue;
+      try{
+        const j=JSON.parse(data);
+        const d=j.choices&&j.choices[0]&&j.choices[0].delta&&j.choices[0].delta.content;
+        if(d){full+=d;if(onDelta)onDelta(full);}
+        if(j.usage){const o=(model==="gpt-4o");addSpend((j.usage.prompt_tokens||0)*(o?PRICE.o_in:PRICE.mini_in)+(j.usage.completion_tokens||0)*(o?PRICE.o_out:PRICE.mini_out));}
+      }catch(e){}
+    }
   }
+  return full.trim();
 }
+async function aiJSON(content,maxTokens,model){try{return JSON.parse(stripFences(await ai(content,maxTokens,model,true)));}catch(e){return null;}}
+async function translate(text,src,dst,onDelta){
+  const toJa=dst==="ja";
+  const prompt="Translate this "+LANG[src].name+" speech into "+LANG[dst].name+". "+(toJa?NATIVE_JA+" ":"")+"Reply with the translation ONLY, in "+LANG[dst].name+(dst==="en"?" (no Japanese characters)":"")+".\n"+text;
+  const out=await aiStream(prompt, toJa?200:150, toJa?"gpt-4o":"gpt-4o-mini", onDelta);
+  if(dst==="en"&&JA_RE.test(out))return await ai("Translate to natural English. English only:\n"+text,150);
+  return out;
+}
+async function romaji(ja){const r=await ai("Hepburn romaji of this Japanese, Latin letters only, nothing else:\n"+ja,120);return JA_RE.test(r)?"":r;}
+async function suggestions(ja,meaningLang){
+  const o=await aiJSON('Someone said in Japanese: "'+ja.replace(/"/g,"'")+'"\nSuggest 3 short natural replies a native speaker would actually say (casual, conversational). JSON: {"replies":[{"ja":"...","romaji":"Latin letters only","meaning":"in '+meaningLang+'"}]}',500,"gpt-4o-mini");
+  return o&&Array.isArray(o.replies)?o.replies.filter(r=>r.ja):[];
+}
+
+/* ================= history / suggestions ================= */
+function pushTurn(cls,srcText,dstText,ro,srcLangCode){
+  histBox.style.display="";
+  const d=document.createElement("div");d.className="turn "+cls;
+  d.innerHTML='<div class="who">🗣 '+esc(LANG[srcLangCode]?LANG[srcLangCode].label:srcLangCode)+'</div><div class="dst">'+esc(dstText)+'</div><div class="src">'+esc(srcText)+'</div><div class="ro">'+esc(ro||"")+'</div>';
+  histList.prepend(d);histList.scrollTop=0;return d;
+}
+function addSuggestionSet(replies,forText,dir){
+  if(!replies.length)return;
+  repliesBox.style.display="";
+  const set=document.createElement("div");
+  set.innerHTML='<div class="label" style="margin-top:6px;opacity:.8">↳ replies to: '+esc((forText||"").slice(0,40))+'</div>';
+  for(const rep of replies){
+    const d=document.createElement("div");d.className="reply";
+    d.innerHTML='<div class="ja">'+esc(rep.ja||"")+'</div><div class="ro">'+esc(rep.romaji||"")+'</div><div class="mean"'+(dir?' dir="'+dir+'"':'')+'>'+esc(rep.meaning||"")+'</div>';
+    d.onclick=()=>speak(rep.ja,"ja");set.appendChild(d);
+  }
+  repliesList.prepend(set);while(repliesList.children.length>5)repliesList.lastChild.remove();repliesList.scrollTop=0;
+}
+
+/* ================= TTS ================= */
+let autoSpeak=false;
+autoSpeakBtn.onclick=()=>{autoSpeak=!autoSpeak;autoSpeakBtn.textContent="🔊 Auto-speak: "+(autoSpeak?"ON":"OFF");autoSpeakBtn.classList.toggle("on",autoSpeak);};
+function speak(text,lang){
+  if(!window.speechSynthesis||!text)return;
+  const u=new SpeechSynthesisUtterance(text);u.lang=LANG[lang].bcp;
+  const vs=speechSynthesis.getVoices();const v=vs.find(v=>v.lang.startsWith(lang));if(v)u.voice=v;
+  speechSynthesis.speak(u);
+}
+if(window.speechSynthesis)speechSynthesis.getVoices();
+function waitForSpeech(){return new Promise(res=>{if(!window.speechSynthesis||!speechSynthesis.speaking){res();return;}const iv=setInterval(()=>{if(!speechSynthesis.speaking){clearInterval(iv);res();}},100);setTimeout(()=>{clearInterval(iv);res();},15000);});}
+
+/* ================= pair selectors ================= */
+function ensureDifferent(changed){if(srcSel.value===dstSel.value){const other=["en","ja","he"].find(l=>l!==srcSel.value);(changed==="src"?dstSel:srcSel).value=other;}}
+function refreshMicLabels(){$("micLblA").textContent=LANG[srcSel.value].label+" → "+LANG[dstSel.value].label;$("micLblB").textContent=LANG[dstSel.value].label+" → "+LANG[srcSel.value].label;}
 srcSel.onchange=()=>{ensureDifferent("src");refreshMicLabels();};
 dstSel.onchange=()=>{ensureDifferent("dst");refreshMicLabels();};
 $("swapBtn").onclick=()=>{const a=srcSel.value;srcSel.value=dstSel.value;dstSel.value=a;refreshMicLabels();};
-function refreshMicLabels(){
-  $("micLblA").textContent=LANG[srcSel.value].label+" → "+LANG[dstSel.value].label;
-  $("micLblB").textContent=LANG[dstSel.value].label+" → "+LANG[srcSel.value].label;
-}
 refreshMicLabels();
 
-autoSpeakBtn.onclick=()=>{autoSpeak=!autoSpeak;autoSpeakBtn.textContent="🔊 Auto-speak: "+(autoSpeak?"ON":"OFF");autoSpeakBtn.classList.toggle("on",autoSpeak);};
-
-/* ---------- history ---------- */
-function pushTurn(cls,srcText,dstText,ro,srcLangCode){
-  histBox.style.display="";
-  const d=document.createElement("div");
-  d.className="turn "+cls;
-  const who = srcLangCode ? (LANG[srcLangCode]?LANG[srcLangCode].label:srcLangCode) : (cls==="a"?LANG[activeSrc].label:LANG[activeSrc].label);
-  d.innerHTML='<div class="who">🗣 '+escapeHtml(who)+'</div>'
-    +'<div class="dst">'+escapeHtml(dstText)+'</div>'
-    +'<div class="src">'+escapeHtml(srcText)+'</div>'
-    +'<div class="ro">'+escapeHtml(ro||"")+'</div>';
-  histList.prepend(d);
-  histList.scrollTop=0;
-  return d;
-}
-function pushTurnToHistory(){
-  if(!sessionSourceText||!translatedSoFar)return;
-  lastTurnEl=pushTurn(activeBtn===micBtnB?"b":"a",sessionSourceText,translatedSoFar,"",activeSrc);
-}
-
-/* ---------- speech recognition (mic buttons + conversation) ---------- */
+/* ================= mic modes (browser speech recognition) ================= */
 const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
 if(!SR){showErr("Speech recognition not supported — use Chrome.");micBtn.disabled=true;micBtnB.disabled=true;}
+let listening=false,rec=null,convoMode=false,turnTimer=null,activeSrc="en",activeDst="ja",activeBtn=null,listeningStoppedManually=false;
+let translatedSoFar="",pendingQueue=[],translating=false,sessionSourceText="",extrasTimer=null,translationFailed=false,displayDirty=false,lastTurnEl=null;
 
 function resetSession(){translationFailed=false;translatedSoFar="";pendingQueue=[];sessionSourceText="";displayDirty=true;}
-function clearDisplayIfDirty(){
-  if(!displayDirty)return;displayDirty=false;
-  outText.textContent="…";outText.classList.add("placeholder");
-  outRomaji.textContent="";repliesBox.style.display="none";repliesList.innerHTML="";
-  inText.textContent="";
-}
+function clearDisplayIfDirty(){if(!displayDirty)return;displayDirty=false;outText.textContent="…";outText.classList.add("placeholder");outRomaji.textContent="";inText.textContent="";}
+function mergeOverlap(a,b){a=a.trim();b=b.trim();if(!a)return b;if(!b)return a;const al=a.toLowerCase(),bl=b.toLowerCase();if(al.endsWith(bl))return a;for(let k=Math.min(al.length,bl.length);k>0;k--)if(al.slice(-k)===bl.slice(0,k))return a+" "+b.slice(k).trim();return a+" "+b;}
 
 function startListening(){
   clearErr();
-  if(!keyCheck()){stopUI();convoMode=false;convoBtn.textContent="🗣 Conversation: OFF";convoBtn.classList.remove("on");return;}
+  if(!keyCheck()){stopUI();setConvo(false);return;}
   resetSession();
-  rec=new SR();
-  rec.lang=LANG[activeSrc].bcp;
-  rec.interimResults=true;
-  rec.continuous=true;
+  rec=new SR();rec.lang=LANG[activeSrc].bcp;rec.interimResults=true;rec.continuous=true;
   let enqueuedLen=0;
-
-  function mergeOverlap(a,b){
-    a=a.trim();b=b.trim();
-    if(!a)return b;if(!b)return a;
-    const al=a.toLowerCase(),bl=b.toLowerCase();
-    if(al.endsWith(bl))return a;
-    for(let k=Math.min(al.length,bl.length);k>0;k--)if(al.slice(-k)===bl.slice(0,k))return a+" "+b.slice(k).trim();
-    return a+" "+b;
-  }
-
   rec.onresult=e=>{
     let finals="",interim="";
-    for(let i=0;i<e.results.length;i++){
-      const t=e.results[i][0].transcript.trim();
-      if(!t)continue;
-      if(e.results[i].isFinal)finals=mergeOverlap(finals,t);else interim=mergeOverlap(interim,t);
-    }
+    for(let i=0;i<e.results.length;i++){const t=e.results[i][0].transcript.trim();if(!t)continue;if(e.results[i].isFinal)finals=mergeOverlap(finals,t);else interim=mergeOverlap(interim,t);}
     sessionSourceText=finals;
     if(finals||interim)clearDisplayIfDirty();
     if(finals.length>enqueuedLen){
       const np=finals.slice(enqueuedLen).trim();enqueuedLen=finals.length;
       if(np)enqueueChunk(np);
-      if(convoMode){if(turnTimer)clearTimeout(turnTimer);turnTimer=setTimeout(()=>{try{rec.stop();}catch(x){}},1500);}
+      if(convoMode){if(turnTimer)clearTimeout(turnTimer);turnTimer=setTimeout(()=>{try{rec.stop();}catch(x){}},1300);}
     }
-    inText.classList.remove("placeholder");
-    inText.textContent=interim?mergeOverlap(finals,interim):finals;
-    inText.dir=activeSrc==="he"?"rtl":"ltr";
+    inText.classList.remove("placeholder");inText.textContent=interim?mergeOverlap(finals,interim):finals;inText.dir=activeSrc==="he"?"rtl":"ltr";
   };
-  rec.onerror=e=>{
-    if(e.error==="no-speech")setStatus("No speech detected");
-    else if(e.error==="not-allowed")showErr("Mic permission denied.");
-    else if(e.error==="network")showErr("Speech recognition network error");
-    else if(e.error!=="aborted")showErr("Recognition error: "+e.error);
-  };
+  rec.onerror=e=>{if(e.error==="no-speech")setStatus("No speech detected");else if(e.error==="not-allowed")showErr("Mic permission denied.");else if(e.error!=="aborted")showErr("Recognition error: "+e.error);};
   rec.onend=async()=>{
     if(convoMode&&listening&&!listeningStoppedManually){
       stopUI();
-      while(translating||pendingQueue.length){await new Promise(r=>setTimeout(r,120));}
+      while(translating||pendingQueue.length){await new Promise(r=>setTimeout(r,100));}
       if(!sessionSourceText){startListening();return;}
-      if(translationFailed||!translatedSoFar){
-        convoMode=false;convoBtn.textContent="🗣 Conversation: OFF";convoBtn.classList.remove("on");stopUI();return;
-      }
-      pushTurnToHistory();
-      fetchExtras();
+      if(translationFailed||!translatedSoFar){setConvo(false);stopUI();return;}
+      pushTurnToHistory();fetchExtras();
       await waitForSpeech();
-      [activeSrc,activeDst]=[activeDst,activeSrc];
-      activeBtn=(activeBtn===micBtn)?micBtnB:micBtn;
+      [activeSrc,activeDst]=[activeDst,activeSrc];activeBtn=(activeBtn===micBtn)?micBtnB:micBtn;
       startListening();return;
     }
     if(listening&&!listeningStoppedManually){try{rec.start();}catch(x){}return;}
     stopUI();
   };
-  rec.start();
-  startUI();
+  rec.start();startUI();
 }
-
 function startUI(){listening=true;listeningStoppedManually=false;if(activeBtn)activeBtn.classList.add("listening");setStatus("Listening ("+LANG[activeSrc].label+")…",true);}
 function stopUI(){listening=false;micBtn.classList.remove("listening");micBtnB.classList.remove("listening");setStatus("Ready");}
-
+function setConvo(on){convoMode=on;convoBtn.textContent="🗣 Conversation: "+(on?"ON":"OFF");convoBtn.classList.toggle("on",on);}
 function toggleMic(btn,src,dst){
-  if(listening){
-    const same=activeBtn===btn;
-    listeningStoppedManually=true;try{rec&&rec.stop();}catch(e){}stopUI();fetchExtras();
-    setTimeout(pushTurnToHistory,400);
-    if(same)return;
-  }
-  activeBtn=btn;activeSrc=src;activeDst=dst;
-  startListening();
+  if(simulOn)stopSimul();
+  if(listening){const same=activeBtn===btn;listeningStoppedManually=true;try{rec&&rec.stop();}catch(e){}stopUI();fetchExtras();setTimeout(pushTurnToHistory,300);if(same)return;}
+  activeBtn=btn;activeSrc=src;activeDst=dst;startListening();
 }
 micBtn.onclick=()=>toggleMic(micBtn,srcSel.value,dstSel.value);
 micBtnB.onclick=()=>toggleMic(micBtnB,dstSel.value,srcSel.value);
-
 convoBtn.onclick=()=>{
-  convoMode=!convoMode;
-  convoBtn.textContent="🗣 Conversation: "+(convoMode?"ON":"OFF");
-  convoBtn.classList.toggle("on",convoMode);
+  if(simulOn)stopSimul();
+  setConvo(!convoMode);
   if(convoMode&&!listening){activeBtn=micBtn;activeSrc=srcSel.value;activeDst=dstSel.value;startListening();}
   if(!convoMode&&listening){listeningStoppedManually=true;try{rec&&rec.stop();}catch(e){}stopUI();}
 };
+function pushTurnToHistory(){if(!sessionSourceText||!translatedSoFar)return;lastTurnEl=pushTurn(activeBtn===micBtnB?"b":"a",sessionSourceText,translatedSoFar,"",activeSrc);}
 
-function waitForSpeech(){
-  return new Promise(res=>{
-    if(!window.speechSynthesis||!speechSynthesis.speaking){res();return;}
-    const iv=setInterval(()=>{if(!speechSynthesis.speaking){clearInterval(iv);res();}},120);
-    setTimeout(()=>{clearInterval(iv);res();},15000);
-  });
-}
-
-/* ---------- chunked translation ---------- */
-function enqueueChunk(chunk){
-  pendingQueue.push(chunk);
-  processQueue();
-  if(extrasTimer)clearTimeout(extrasTimer);
-  extrasTimer=setTimeout(fetchExtras,1800);
-}
-async function processQueue(){
-  if(translating)return;translating=true;
-  while(pendingQueue.length){await translateChunk(pendingQueue.splice(0).join(" "));}
-  translating=false;
-}
+function enqueueChunk(chunk){pendingQueue.push(chunk);processQueue();if(extrasTimer)clearTimeout(extrasTimer);extrasTimer=setTimeout(fetchExtras,1500);}
+async function processQueue(){if(translating)return;translating=true;while(pendingQueue.length){await translateChunk(pendingQueue.splice(0).join(" "));}translating=false;}
 async function translateChunk(text){
   setStatus("Translating…",true);
-  const src=LANG[activeSrc].name,dst=LANG[activeDst].name;
   try{
-    const out=await aiChat(
-"Translate this "+src+" speech segment into "+dst+". "+
-(translatedSoFar?("Earlier context (do not repeat): "+translatedSoFar+"\n"):"")+
-(activeDst==="ja"?"Make the Japanese sound like a native speaker in casual real conversation: natural word choice and particles, contractions where natural (してる not している), casual register unless clearly formal. Never stiff textbook Japanese. ":"")+
-"IMPORTANT: your entire reply must be written in "+dst+" only. No romaji, no explanations, no quotes.\nSegment: "+text,600, activeDst==="ja"?"gpt-4o":"gpt-4o-mini");
+    const base=translatedSoFar;
+    outText.classList.remove("placeholder");outText.dir=activeDst==="he"?"rtl":"ltr";
+    const out=await translate(text,activeSrc,activeDst,partial=>{outText.textContent=base+(base?" ":"")+partial;});
     if(!out)throw new Error("empty response");
-    translatedSoFar+=(translatedSoFar?" ":"")+out;
-    outText.classList.remove("placeholder");
+    translatedSoFar=base+(base?" ":"")+out;
     outText.textContent=translatedSoFar;
-    outText.dir=activeDst==="he"?"rtl":"ltr";
     setStatus(listening?"Listening ("+LANG[activeSrc].label+")…":"Done",listening);
     if(autoSpeak)speak(out,activeDst);
   }catch(e){showErr("Translation failed — "+(e.message||"connection error"));setStatus("Ready");translationFailed=true;}
 }
-
-/* ---------- romaji + suggested replies ---------- */
 async function fetchExtras(){
-  const jaInvolved=activeSrc==="ja"||activeDst==="ja";
-  if(!jaInvolved||!sessionSourceText)return;
-  const userLang=activeSrc==="ja"?LANG[activeDst].name:LANG[activeSrc].name;
-  const jaText=activeDst==="ja"?translatedSoFar:sessionSourceText;
+  const jaText=activeDst==="ja"?translatedSoFar:(activeSrc==="ja"?sessionSourceText:"");
   if(!jaText)return;
-  try{
-    let raw=await aiChat(
-"Japanese text from a live conversation:\n\n"+jaText+"\n\nRespond ONLY with valid JSON, no markdown fences:\n"+
-'{"romaji":"romaji of the Japanese text","replies":[{"ja":"short natural Japanese reply","romaji":"its romaji","meaning":"its meaning in '+userLang+'"},{"ja":"...","romaji":"...","meaning":"..."},{"ja":"...","romaji":"...","meaning":"..."}]}',1000);
-    raw=raw.replace(/```json|```/g,"").trim();
-    const obj=JSON.parse(raw);
-    if(obj.romaji){
-      outRomaji.textContent=obj.romaji;
-      if(lastTurnEl){const ro=lastTurnEl.querySelector(".ro");if(ro&&!ro.textContent)ro.textContent=obj.romaji;}
-    }
-    if(Array.isArray(obj.replies)&&obj.replies.length){
-      addSuggestionSet(obj.replies, jaText, userLang==="Hebrew"?"rtl":"ltr");
-    }
-  }catch(e){/* extras are best-effort */}
+  const meaningLang=activeSrc==="ja"?LANG[activeDst].name:LANG[activeSrc].name;
+  // romaji and suggestions in PARALLEL
+  const [ro,reps]=await Promise.all([romaji(jaText).catch(()=>""),suggestions(jaText,meaningLang).catch(()=>[])]);
+  if(ro){outRomaji.textContent=ro;if(lastTurnEl){const el=lastTurnEl.querySelector(".ro");if(el&&!el.textContent)el.textContent=ro;}}
+  addSuggestionSet(reps,jaText,meaningLang==="Hebrew"?"rtl":"ltr");
 }
 
-/* ---------- TTS ---------- */
-function speak(text,lang){
-  if(!window.speechSynthesis)return;
-  const u=new SpeechSynthesisUtterance(text);
-  u.lang=LANG[lang].bcp;
-  const vs=speechSynthesis.getVoices();
-  const v=vs.find(v=>v.lang.startsWith(lang))||vs.find(v=>v.lang.startsWith(LANG[lang].bcp.split("-")[0]));
-  if(v)u.voice=v;
-  speechSynthesis.speak(u);
-}
-if(window.speechSynthesis)speechSynthesis.getVoices();
-
-/* ---------- SIMULTANEOUS (Whisper auto-language) ---------- */
-let simulOn=false,simulStream=null,simulRecorder=null,simulLoopActive=false;
-let audioCtx=null,analyser=null,levelData=null;
+/* ================= SIMULTANEOUS (fast pipeline: PCM ring buffer + pre-roll VAD + WAV) ================= */
+let simulOn=false,simulStream=null,audioCtx=null,procNode=null,srcNode=null;
+const TARGET_SR=16000;
+let pcmPre=[],pcmSeg=[],preSamples=0,inSpeech=false,speechStart=0,lastLoud=0,noiseFloor=0.004,seqCounter=0;
+const PRE_MS=400,SILENCE_MS=500,MAX_MS=10000,MIN_MS=300;
 
 simulBtn.onclick=async()=>{
   if(simulOn){stopSimul();return;}
-  clearErr();
-  if(!keyCheck())return;
+  clearErr();if(!keyCheck())return;
   if(listening){listeningStoppedManually=true;try{rec&&rec.stop();}catch(e){}stopUI();}
-  if(convoMode){convoMode=false;convoBtn.textContent="🗣 Conversation: OFF";convoBtn.classList.remove("on");}
-  try{simulStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true}});}
+  setConvo(false);
+  try{simulStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true,channelCount:1}});}
   catch(e){showErr("Mic permission denied.");return;}
   audioCtx=new (window.AudioContext||window.webkitAudioContext)();
-  const sn=audioCtx.createMediaStreamSource(simulStream);
-  analyser=audioCtx.createAnalyser();analyser.fftSize=512;
-  levelData=new Uint8Array(analyser.frequencyBinCount);
-  sn.connect(analyser);
-  simulOn=true;simulLoopActive=true;
-  simulBtn.textContent="⚡ Simultaneous: ON";simulBtn.classList.add("on");
-  setStatus("Simultaneous — listening to both languages…",true);
-  histBox.style.display="";
-  simulLoop();
+  srcNode=audioCtx.createMediaStreamSource(simulStream);
+  procNode=audioCtx.createScriptProcessor(2048,1,1);
+  pcmPre=[];pcmSeg=[];preSamples=0;inSpeech=false;noiseFloor=0.004;
+  procNode.onaudioprocess=onAudio;
+  srcNode.connect(procNode);procNode.connect(audioCtx.destination);
+  simulOn=true;simulBtn.textContent="⚡ Simultaneous: ON";simulBtn.classList.add("on");
+  setStatus("Simultaneous — listening to both languages…",true);histBox.style.display="";
 };
 function stopSimul(){
-  simulOn=false;simulLoopActive=false;
-  try{simulRecorder&&simulRecorder.state!=="inactive"&&simulRecorder.stop();}catch(e){}
+  simulOn=false;
+  try{procNode&&procNode.disconnect();srcNode&&srcNode.disconnect();}catch(e){}
   if(simulStream){simulStream.getTracks().forEach(t=>t.stop());simulStream=null;}
   if(audioCtx){audioCtx.close();audioCtx=null;}
-  simulBtn.textContent="⚡ Simultaneous: OFF";simulBtn.classList.remove("on");
-  setStatus("Ready");
+  simulBtn.textContent="⚡ Simultaneous: OFF";simulBtn.classList.remove("on");setStatus("Ready");
 }
-function micLevel(){
-  analyser.getByteFrequencyData(levelData);
-  let s=0;for(let i=0;i<levelData.length;i++)s+=levelData[i];
-  return s/levelData.length;
+function downsample(f32,fromSr){
+  if(fromSr===TARGET_SR)return f32;
+  const ratio=fromSr/TARGET_SR,n=Math.floor(f32.length/ratio),out=new Float32Array(n);
+  for(let i=0;i<n;i++){const a=Math.floor(i*ratio),b=Math.min(f32.length,Math.floor((i+1)*ratio));let s=0;for(let k=a;k<b;k++)s+=f32[k];out[i]=s/(b-a||1);}
+  return out;
 }
-async function simulLoop(){
-  // Voice-activity based: start capturing when speech starts, cut the segment
-  // ~0.7s after speech stops. Reaction time = when you stop talking, not a timer.
-  const SPEECH=24, SILENCE_MS=700, MAX_MS=9000, MIN_MS=350;
-  while(simulLoopActive){
-    // wait for speech to start
-    while(simulLoopActive && micLevel()<SPEECH){await new Promise(r=>setTimeout(r,60));}
-    if(!simulLoopActive)break;
-    const blob=await recordUntilSilence(SPEECH,SILENCE_MS,MAX_MS,MIN_MS);
-    if(!simulLoopActive)break;
-    if(blob) processSegment(blob); // fire and forget — keeps listening while transcribing
+function onAudio(e){
+  if(!simulOn)return;
+  const raw=e.inputBuffer.getChannelData(0);
+  const f=downsample(raw,audioCtx.sampleRate);
+  let sum=0;for(let i=0;i<f.length;i++)sum+=f[i]*f[i];
+  const rms=Math.sqrt(sum/f.length);
+  // adaptive noise floor: drifts down quickly, up slowly
+  if(rms<noiseFloor)noiseFloor=noiseFloor*0.9+rms*0.1; else noiseFloor=noiseFloor*0.995+rms*0.005;
+  const thresh=Math.max(0.012,noiseFloor*3.5);
+  const now=Date.now();
+  const chunk=new Float32Array(f);
+  if(!inSpeech){
+    pcmPre.push(chunk);preSamples+=chunk.length;
+    while(preSamples>TARGET_SR*PRE_MS/1000){preSamples-=pcmPre[0].length;pcmPre.shift();}
+    if(rms>thresh){inSpeech=true;speechStart=now;lastLoud=now;pcmSeg=pcmPre.slice();pcmPre=[];preSamples=0;setStatus("Hearing…",true);}
+  }else{
+    pcmSeg.push(chunk);
+    if(rms>thresh)lastLoud=now;
+    const dur=now-speechStart;
+    if(now-lastLoud>SILENCE_MS||dur>MAX_MS){
+      const seg=pcmSeg;pcmSeg=[];inSpeech=false;setStatus("Simultaneous — listening to both languages…",true);
+      if(dur-(now-lastLoud)>=MIN_MS){const blob=wavBlob(seg,TARGET_SR);processSegment(blob);}
+    }
   }
 }
-function recordUntilSilence(SPEECH,SILENCE_MS,MAX_MS,MIN_MS){
-  return new Promise(res=>{
-    const mime=MediaRecorder.isTypeSupported("audio/webm;codecs=opus")?"audio/webm;codecs=opus":"";
-    simulRecorder=new MediaRecorder(simulStream,mime?{mimeType:mime,audioBitsPerSecond:32000}:{audioBitsPerSecond:32000});
-    const chunks=[];const t0=Date.now();let lastLoud=Date.now();
-    simulRecorder.ondataavailable=e=>{if(e.data.size)chunks.push(e.data);};
-    simulRecorder.onstop=()=>{
-      const dur=Date.now()-t0;
-      res(dur>=MIN_MS?new Blob(chunks,{type:mime||"audio/webm"}):null);
-    };
-    simulRecorder.start();
-    const iv=setInterval(()=>{
-      const l=micLevel();
-      if(l>=SPEECH)lastLoud=Date.now();
-      const quietFor=Date.now()-lastLoud;
-      if(quietFor>SILENCE_MS||Date.now()-t0>MAX_MS){
-        clearInterval(iv);try{simulRecorder.stop();}catch(e){res(null);}
-      }
-    },60);
-  });
+function wavBlob(chunks,sr){
+  let n=0;for(const c of chunks)n+=c.length;
+  const buf=new ArrayBuffer(44+n*2),v=new DataView(buf);
+  const w=(o,s)=>{for(let i=0;i<s.length;i++)v.setUint8(o+i,s.charCodeAt(i));};
+  w(0,"RIFF");v.setUint32(4,36+n*2,true);w(8,"WAVE");w(12,"fmt ");v.setUint32(16,16,true);v.setUint16(20,1,true);v.setUint16(22,1,true);
+  v.setUint32(24,sr,true);v.setUint32(28,sr*2,true);v.setUint16(32,2,true);v.setUint16(34,16,true);w(36,"data");v.setUint32(40,n*2,true);
+  let o=44;for(const c of chunks)for(let i=0;i<c.length;i++){const x=Math.max(-1,Math.min(1,c[i]));v.setInt16(o,x<0?x*0x8000:x*0x7FFF,true);o+=2;}
+  return new Blob([buf],{type:"audio/wav"});
+}
+const JUNK=["thank you","thanks for watching","ご視聴ありがとうございました","字幕","subtitles","subscribe"];
+async function transcribe(blob){
+  const fd=new FormData();fd.append("file",blob,"seg.wav");fd.append("model","gpt-4o-mini-transcribe");
+  fd.append("prompt","Conversation mixing Japanese, English and Hebrew. Some speakers have a foreign accent. Write Japanese in Japanese script. If there is no clear speech, return nothing.");
+  const wr=await fetch("https://api.openai.com/v1/audio/transcriptions",{method:"POST",headers:{"Authorization":"Bearer "+key()},body:fd});
+  if(!wr.ok){const t=await wr.text().catch(()=>"");throw new Error("API "+wr.status+(t?": "+t.slice(0,120):""));}
+  addSpend(((blob.size-44)/(TARGET_SR*2))/60*PRICE.stt_min);
+  return ((await wr.json()).text||"").trim();
 }
 async function processSegment(blob){
+  const el=pushTurn("a","…","…","","…"); // placeholder keeps spoken order
+  el.querySelector(".who").textContent="🗣 …";
   try{
-    const fd=new FormData();
-    fd.append("file",blob,"seg.webm");
-    fd.append("model","gpt-4o-mini-transcribe");
-    fd.append("prompt","Conversation mixing Japanese, English and Hebrew. Some speakers have a foreign accent. Write Japanese in Japanese script. If the audio contains no clear speech, return nothing.");
-    const wr=await fetch("https://api.openai.com/v1/audio/transcriptions",{
-      method:"POST",headers:{"Authorization":"Bearer "+$("oaiKey").value.trim()},body:fd});
-    if(!wr.ok){const t=await wr.text().catch(()=>"");showErr("Transcribe API "+wr.status+(t?" — "+t.slice(0,120):""));return;}
-    addSpend((blob.size/4000)/60*PRICE.stt_min);
-    const w=await wr.json();
-    let text=(w.text||"").trim();
-    if(!text||text.length<2)return;
-    const junk=["thank you.","thank you","thanks for watching","ご視聴ありがとうございました","ありがとうございました。","元気ですか","元気ですか?","元気ですか？","こんにちは","字幕","subtitles"];
-    const tl=text.toLowerCase().replace(/[。、!?！？\s]+$/,"");
-    if(junk.some(j=>tl===j.toLowerCase().replace(/[。、!?！？\s]+$/,"")))return;
-    let segSrc=/[\u3040-\u30ff\u4e00-\u9fff]/.test(text)?"ja":/[\u0590-\u05ff]/.test(text)?"he":"en";
+    const text=await transcribe(blob);
+    const tl=(text||"").toLowerCase().replace(/[。、.!?！？\s]+$/,"");
+    if(!text||text.length<2||JUNK.some(j=>tl===j)){el.remove();return;}
+    const segSrc=JA_RE.test(text)?"ja":HE_RE.test(text)?"he":"en";
     const segDst=segSrc==="en"?"ja":"en";
-    const placeholder=pushTurn(segSrc==="en"?"a":"b",text,"…","",segSrc);
-    // ONE call: translation + romaji + (for Japanese input) suggested replies
-    let raw;
-    try{
-      raw=await aiChat(
-'Live spoken conversation. Someone said in '+LANG[segSrc].name+': "'+text.replace(/"/g,"'")+'"\n'+
-'Respond ONLY with valid JSON, no fences: {"t":"translation in '+LANG[segDst].name+'","r":"Hepburn romaji (Latin letters ONLY) of the Japanese side"'
-+(segSrc==="ja"?',"replies":[{"ja":"short natural Japanese reply","romaji":"Latin letters only","meaning":"in English"},{"ja":"...","romaji":"...","meaning":"..."},{"ja":"...","romaji":"...","meaning":"..."}]':'')
-+'}\nRules: "t" must be '+LANG[segDst].name+' only'+(segDst==="en"?' with no Japanese characters':'')
-+(segDst==="ja"?'. The Japanese must sound like a NATIVE speaker talking casually in real conversation: natural word choice, natural particles, contractions where natural (してる not している), casual register unless the content is clearly formal. Never stiff textbook Japanese.':'')
-+'. "r" must never contain Japanese characters.',
-segSrc==="ja"?700:350, segDst==="ja"?"gpt-4o":"gpt-4o-mini");
-    }catch(e){placeholder.remove();showErr("Translation error — "+(e.message||""));return;}
-    raw=raw.replace(/```json|```/g,"").trim();
-    let obj;try{obj=JSON.parse(raw);}catch(e){obj={t:raw,r:""};}
-    if(segDst==="en"&&/[\u3040-\u30ff\u4e00-\u9fff]/.test(obj.t||"")){
-      try{obj.t=await aiChat('Translate to natural English, reply with the English translation only: '+text,200);}catch(e){}
-    }
-    if(/[\u3040-\u30ff\u4e00-\u9fff]/.test(obj.r||""))obj.r="";
-    const jaSide2 = segSrc==="ja" ? text : (segDst==="ja" ? (obj.t||"") : "");
-    if(jaSide2 && !obj.r){
-      try{obj.r=await aiChat("Romanize this Japanese into Hepburn romaji. Reply with the romaji only, Latin letters: "+jaSide2,150);}catch(e){}
-      if(/[\u3040-\u30ff\u4e00-\u9fff]/.test(obj.r||""))obj.r="";
-    }
-    placeholder.querySelector(".dst").textContent=obj.t||"";
-    placeholder.querySelector(".ro").textContent=obj.r||"";
-    if(segSrc==="ja"&&Array.isArray(obj.replies)&&obj.replies.length)addSuggestionSet(obj.replies,text);
-  }catch(e){showErr("Simultaneous error: "+(e.message||"unknown"));}
-}
-function addSuggestionSet(replies, forText, dir){
-  repliesBox.style.display="";
-  const set=document.createElement("div");
-  set.innerHTML='<div class="label" style="margin-top:6px;opacity:.8">↳ replies to: '+escapeHtml((forText||"").slice(0,40))+'</div>';
-  for(const rep of replies){
-    const d=document.createElement("div");
-    d.className="reply";
-    d.innerHTML='<div class="ja">'+escapeHtml(rep.ja||"")+'</div><div class="ro">'+escapeHtml(rep.romaji||"")+'</div><div class="mean"'+(dir?' dir="'+dir+'"':'')+'>'+escapeHtml(rep.meaning||"")+'</div>';
-    d.onclick=()=>speak(rep.ja,"ja");
-    set.appendChild(d);
-  }
-  repliesList.prepend(set);
-  while(repliesList.children.length>5) repliesList.lastChild.remove(); // keep last 5 sets
-  repliesList.scrollTop=0;
+    el.className="turn "+(segSrc==="en"?"a":"b");
+    el.querySelector(".who").textContent="🗣 "+LANG[segSrc].label;
+    el.querySelector(".src").textContent=text;
+    // PARALLEL: translation, romaji (of the Japanese side), suggestions (if Japanese was spoken)
+    const jaInput=segSrc==="ja";
+    const dstEl=el.querySelector(".dst");
+    const pTrans=translate(text,segSrc,segDst,partial=>{dstEl.textContent=partial;});
+    const pRo=jaInput?romaji(text):pTrans.then(t=>romaji(t));
+    const pSug=jaInput?suggestions(text,"English"):Promise.resolve([]);
+    pTrans.then(t=>{el.querySelector(".dst").textContent=t;if(autoSpeak)speak(t,segDst);}).catch(e=>{el.querySelector(".dst").textContent="(translation failed)";showErr("Translation error — "+(e.message||""));});
+    pRo.then(r=>{el.querySelector(".ro").textContent=r||"";}).catch(()=>{});
+    pSug.then(reps=>addSuggestionSet(reps,text,"ltr")).catch(()=>{});
+  }catch(e){el.remove();showErr("Simultaneous error: "+(e.message||"unknown"));}
 }
 
-/* ---------- CAMERA (real OCR boxes + GPT translation) ---------- */
-const camBox=$("camBox"),camVideo=$("camVideo"),camOverlay=$("camOverlay"),camStatus=$("camStatus");
-let camStream=null,camTimer=null,camBusy=false,camScanCount=0,camZoomF=1;
-let ocrWorker=null,ocrReady=false,ocrLoading=false;
-const camZoomEl=$("camZoom");
-camZoomEl.addEventListener("input",()=>{
-  camZoomF=parseFloat(camZoomEl.value)||1;
-  $("camZoomVal").textContent=camZoomF.toFixed(1)+"×";
-  camVideo.style.transform="scale("+camZoomF+")";
-  camVideo.style.transformOrigin="center center";
-  camOverlay.innerHTML="";
-});
-
+/* ================= CAMERA (OCR + vision fallback + freeze) ================= */
+const camBox=$("camBox"),camVideo=$("camVideo"),camOverlay=$("camOverlay"),camStatus=$("camStatus"),camZoomEl=$("camZoom");
+let camStream=null,camTimer=null,camBusy=false,camScanCount=0,camZoomF=1,ocrWorker=null,ocrReady=false,ocrLoading=false,lastFrameSig=null,frozen=false;
+const camCache={};
+camZoomEl.addEventListener("input",()=>{camZoomF=parseFloat(camZoomEl.value)||1;$("camZoomVal").textContent=camZoomF.toFixed(1)+"×";camVideo.style.transform="scale("+camZoomF+")";camVideo.style.transformOrigin="center center";camOverlay.innerHTML="";frozen=false;lastFrameSig=null;});
 function loadScript(src){return new Promise((res,rej)=>{const t=document.createElement("script");t.src=src;t.onload=res;t.onerror=()=>rej(new Error("failed to load "+src));document.head.appendChild(t);});}
-
 async function initOcr(){
-  if(ocrReady||ocrLoading)return;
-  ocrLoading=true;
-  camStatus.textContent="Loading text-recognition engine (first time only, ~15 MB)…";
-  try{
-    await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js");
-    ocrWorker=await Tesseract.createWorker(["jpn","jpn_vert"]);
-    await ocrWorker.setParameters({tessedit_pageseg_mode:"11"}); // sparse text
-    ocrReady=true;
-    camStatus.textContent="Text engine ready.";
-  }catch(e){
-    camStatus.textContent="Could not load OCR engine: "+(e.message||"")+" — check internet.";
-  }
+  if(ocrReady||ocrLoading)return;ocrLoading=true;camStatus.textContent="Loading text-recognition engine (first time only, ~15 MB)…";
+  try{await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js");ocrWorker=await Tesseract.createWorker(["jpn","jpn_vert"]);await ocrWorker.setParameters({tessedit_pageseg_mode:"11"});ocrReady=true;camStatus.textContent="Text engine ready.";}
+  catch(e){camStatus.textContent="Could not load OCR engine: "+(e.message||"")+" — check internet.";}
   ocrLoading=false;
 }
-
 $("camBtn").onclick=async()=>{
-  clearErr();
-  if(!keyCheck())return;
-  try{camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"},audio:false});}
-  catch(e){showErr("Camera permission denied or unavailable.");return;}
-  camVideo.srcObject=camStream;
-  camBox.style.display="";
-  camOverlay.innerHTML="";
-  camScanCount=0;frozen=false;lastFrameSig=null;
-  initOcr();
-  camTimer=setInterval(camScan,3500);
+  clearErr();if(!keyCheck())return;
+  if(listening){listeningStoppedManually=true;try{rec&&rec.stop();}catch(e){}stopUI();}
+  try{camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"},audio:false});}catch(e){showErr("Camera permission denied or unavailable.");return;}
+  camVideo.srcObject=camStream;camBox.style.display="";camOverlay.innerHTML="";camScanCount=0;frozen=false;lastFrameSig=null;
+  initOcr();camTimer=setInterval(camScan,3000);
 };
-$("camStop").onclick=()=>{
-  clearInterval(camTimer);camTimer=null;
-  if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;}
-  camBox.style.display="none";camOverlay.innerHTML="";
-};
-
-const camTranslationCache={}; // ja text -> en, so still frames cost nothing
-let lastFrameSig=null,frozen=false;
-function frameSignature(video,cw,ch,cx,cy){
-  const t=document.createElement("canvas");t.width=16;t.height=16;
-  t.getContext("2d").drawImage(video,cx,cy,cw,ch,0,0,16,16);
-  const d=t.getContext("2d").getImageData(0,0,16,16).data;
-  const sig=new Array(256);
-  for(let i=0;i<256;i++)sig[i]=(d[i*4]*0.299+d[i*4+1]*0.587+d[i*4+2]*0.114)|0;
-  return sig;
-}
+$("camStop").onclick=()=>{clearInterval(camTimer);camTimer=null;if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;}camBox.style.display="none";camOverlay.innerHTML="";};
+function frameSignature(cw,ch,cx,cy){const t=document.createElement("canvas");t.width=16;t.height=16;const g=t.getContext("2d");g.drawImage(camVideo,cx,cy,cw,ch,0,0,16,16);const d=g.getImageData(0,0,16,16).data;const sig=new Array(256);for(let i=0;i<256;i++)sig[i]=(d[i*4]*0.299+d[i*4+1]*0.587+d[i*4+2]*0.114)|0;return sig;}
 function frameDiff(a,b){if(!a||!b)return 1;let s=0;for(let i=0;i<256;i++)s+=Math.abs(a[i]-b[i]);return s/(256*255);}
-async function visionFallback(c){
-  try{
-    // draw coordinate grid on a copy
-    const gc2=document.createElement("canvas");gc2.width=c.width;gc2.height=c.height;
-    const g=gc2.getContext("2d");g.drawImage(c,0,0);
-    g.strokeStyle="rgba(255,0,0,0.5)";g.lineWidth=1;g.fillStyle="rgba(255,0,0,0.9)";g.font=Math.round(c.height*0.025)+"px sans-serif";
-    for(let i=1;i<10;i++){const gx=c.width*i/10,gy=c.height*i/10;
-      g.beginPath();g.moveTo(gx,0);g.lineTo(gx,c.height);g.stroke();
-      g.beginPath();g.moveTo(0,gy);g.lineTo(c.width,gy);g.stroke();
-      g.fillText((i/10).toFixed(1),gx+2,12);g.fillText((i/10).toFixed(1),2,gy-3);}
-    const b64=gc2.toDataURL("image/jpeg",0.72).split(",")[1];
-    const r=await fetch("https://api.openai.com/v1/chat/completions",{
-      method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+$("oaiKey").value.trim()},
-      body:JSON.stringify({model:"gpt-4o-mini",max_tokens:700,messages:[{role:"user",content:[
-        {type:"image_url",image_url:{url:"data:image/jpeg;base64,"+b64}},
-        {type:"text",text:'Red grid = coordinates (labels 0.1-0.9). Find each block of Japanese text and TRANSLATE it into ENGLISH. The "en" field must contain ONLY English words — never Japanese characters. Give each box read off the grid. JSON only, no fences: {"blocks":[{"en":"English translation","x":0.1,"y":0.2,"w":0.3,"h":0.08}]}'}]}]})});
-    if(!r.ok)return;
-    const data=await r.json();
-    if(data.usage)addSpend((data.usage.prompt_tokens||0)*PRICE.chat_in+(data.usage.completion_tokens||0)*PRICE.chat_out);
-    let raw=(data.choices&&data.choices[0]&&data.choices[0].message&&data.choices[0].message.content||"").trim().replace(/```json|```/g,"").trim();
-    let obj;try{obj=JSON.parse(raw);}catch(e){return;}
-    let blocks=Array.isArray(obj.blocks)?obj.blocks:[];
-    // repair: if "en" still contains Japanese, translate those in one batch
-    const bad=blocks.filter(b=>/[\u3040-\u30ff\u4e00-\u9fff]/.test(b.en||""));
-    if(bad.length){
-      try{
-        let raw2=await aiChat('Translate each Japanese string to short natural English. JSON array of strings, same order, no fences:\n'+JSON.stringify(bad.map(b=>b.en)),400);
-        const arr2=JSON.parse(raw2.replace(/```json|```/g,"").trim());
-        bad.forEach((b,k)=>{if(Array.isArray(arr2)&&arr2[k])b.en=arr2[k];});
-      }catch(e){blocks=blocks.filter(b=>!/[\u3040-\u30ff\u4e00-\u9fff]/.test(b.en||""));}
-    }
-    if(!blocks.length){camStatus.textContent="No Japanese text detected";return;}
-    camOverlay.innerHTML="";
-    for(const b of blocks){
-      if(!b.en)continue;
-      const d=document.createElement("div");
-      const x=Math.max(0,Math.min(1,+b.x||0))*100,y=Math.max(0,Math.min(1,+b.y||0))*100;
-      const bw=Math.max(0.06,Math.min(1,+b.w||0.3))*100,bh=Math.max(0.03,Math.min(1,+b.h||0.06))*100;
-      d.style.cssText="position:absolute;left:"+x+"%;top:"+y+"%;width:"+bw+"%;min-height:"+bh+"%;"
-        +"background:rgba(10,12,20,.85);color:#fff;border-radius:5px;padding:1px 5px;"
-        +"display:flex;align-items:center;justify-content:center;text-align:center;font-weight:700;line-height:1.1;"
-        +"font-size:clamp(10px,"+Math.max(1.8,bh*0.5)+"vw,20px);overflow:hidden";
-      d.textContent=b.en;
-      camOverlay.appendChild(d);
-    }
-    frozen=blocks.length>0;
-    camStatus.textContent=blocks.length?blocks.length+" block(s) — approximate (holding until you move)":"No Japanese text detected";
-  }catch(e){/* silent — next scan retries */}
+function placeBox(en,x,y,bw,bh,bg,fg){
+  const d=document.createElement("div");
+  d.style.cssText="position:absolute;left:"+x+"%;top:"+y+"%;width:"+bw+"%;height:"+bh+"%;background:"+bg+";color:"+fg+";display:flex;align-items:center;justify-content:center;text-align:center;font-weight:800;line-height:1.05;overflow:hidden;white-space:nowrap;border-radius:4px;padding:1px 4px";
+  d.textContent=en;camOverlay.appendChild(d);
+  requestAnimationFrame(()=>{let fs=Math.max(9,d.clientHeight*0.72);d.style.fontSize=fs+"px";while(fs>8&&(d.scrollWidth>d.clientWidth||d.scrollHeight>d.clientHeight)){fs-=1;d.style.fontSize=fs+"px";}});
 }
 async function camScan(){
   if(camBusy||!camStream||!ocrReady)return;
-  const w0=camVideo.videoWidth,h0=camVideo.videoHeight;
-  if(w0){
-    const cw0=w0/camZoomF,ch0=h0/camZoomF;
-    const sig=frameSignature(camVideo,cw0,ch0,(w0-cw0)/2,(h0-ch0)/2);
-    const diff=frameDiff(lastFrameSig,sig);
-    if(frozen&&diff<0.06)return;      // same scene + result already shown: do nothing
-    if(diff>=0.06)frozen=false;       // scene changed: rescan
-    lastFrameSig=sig;
-  }
-  camBusy=true;camScanCount++;
-  camStatus.textContent="Scanning… ("+camScanCount+")";
+  const w=camVideo.videoWidth,h=camVideo.videoHeight;if(!w)return;
+  const cw=w/camZoomF,ch=h/camZoomF,cx=(w-cw)/2,cy=(h-ch)/2;
+  const sig=frameSignature(cw,ch,cx,cy);const diff=frameDiff(lastFrameSig,sig);
+  if(frozen&&diff<0.06)return; if(diff>=0.06)frozen=false; lastFrameSig=sig;
+  camBusy=true;camScanCount++;camStatus.textContent="Scanning… ("+camScanCount+")";
   try{
-    const w=camVideo.videoWidth,h=camVideo.videoHeight;
-    if(!w){camBusy=false;return;}
-    const cw=w/camZoomF,ch=h/camZoomF,cx=(w-cw)/2,cy=(h-ch)/2;
-    const c=document.createElement("canvas");
-    const sc=Math.min(1,1280/Math.max(cw,ch));
-    c.width=Math.round(cw*sc);c.height=Math.round(ch*sc);
-    c.getContext("2d").drawImage(camVideo,cx,cy,cw,ch,0,0,c.width,c.height);
-    // OCR copy: grayscale + contrast boost (reads stylized text better)
-    const oc=document.createElement("canvas");oc.width=c.width;oc.height=c.height;
-    const og=oc.getContext("2d");og.filter="grayscale(1) contrast(1.8) brightness(1.05)";og.drawImage(c,0,0);
-
+    const c=document.createElement("canvas");const sc=Math.min(1,1280/Math.max(cw,ch));c.width=Math.round(cw*sc);c.height=Math.round(ch*sc);
+    const g=c.getContext("2d");g.drawImage(camVideo,cx,cy,cw,ch,0,0,c.width,c.height);
+    const oc=document.createElement("canvas");oc.width=c.width;oc.height=c.height;const og=oc.getContext("2d");og.filter="grayscale(1) contrast(1.8) brightness(1.05)";og.drawImage(c,0,0);
     const res=await ocrWorker.recognize(oc);
-    const all=(res.data.lines||[]).map(l=>({text:(l.text||"").trim().replace(/\s+/g,""),conf:l.confidence,bbox:l.bbox}));
-    // strict quality: high confidence, at least 2 Japanese characters, real length
-    const lines=all.filter(l=>{
-      const jaChars=(l.text.match(/[\u3040-\u30ff\u4e00-\u9fff]/g)||[]).length;
-      return l.conf>55 && jaChars>=2 && l.text.length>=2;
-    });
+    const lines=(res.data.lines||[]).map(l=>({text:(l.text||"").trim().replace(/\s+/g,""),conf:l.confidence,bbox:l.bbox}))
+      .filter(l=>l.conf>55&&(l.text.match(/[\u3040-\u30ff\u4e00-\u9fff]/g)||[]).length>=2);
     const avgConf=lines.length?lines.reduce((a,l)=>a+l.conf,0)/lines.length:0;
-    // if OCR reads poorly (stylized poster), don't show its guesses — use AI vision instead
-    if(lines.length<2 || avgConf<65){
-      camStatus.textContent="Stylized text — using AI vision ("+camScanCount+")…";
-      await visionFallback(c);
-      camBusy=false;return;
-    }
-
-    // translate only lines we haven't seen (batch, one call)
-    const unknown=[...new Set(lines.map(l=>l.text))].filter(t=>!(t in camTranslationCache));
+    if(lines.length<2||avgConf<65){camStatus.textContent="Stylized text — using AI vision ("+camScanCount+")…";await visionFallback(c);camBusy=false;return;}
+    const unknown=[...new Set(lines.map(l=>l.text))].filter(t=>!(t in camCache));
     if(unknown.length){
-      try{
-        let raw=await aiChat(
-'These lines were OCR-read from Japanese signs (may contain small OCR errors — infer the intended text). Translate each to short natural English. Respond ONLY with a JSON array of strings in the same order, no fences:\n'
-+JSON.stringify(unknown),600);
-        raw=raw.replace(/```json|```/g,"").trim();
-        const arr=JSON.parse(raw);
-        unknown.forEach((t,k)=>{camTranslationCache[t]=(Array.isArray(arr)&&arr[k])?arr[k]:"";});
-      }catch(e){/* keep boxes without translation this round */}
+      const arr=await aiJSON('OCR lines from Japanese signs (may contain small OCR errors — infer intended text). Translate each to short natural English. JSON: {"t":["..."]} same order.\n'+JSON.stringify(unknown),500);
+      unknown.forEach((t,k)=>{camCache[t]=(arr&&Array.isArray(arr.t)&&arr.t[k])||"";});
     }
-
-    const newOverlay=document.createDocumentFragment();
-    const g2=c.getContext("2d");
+    camOverlay.innerHTML="";let n=0;
     for(const l of lines){
-      const en=camTranslationCache[l.text];
-      if(!en)continue;
-      // sample the sign's background: pixels along the box border (avoids the dark glyphs inside)
-      let r=0,gc=0,b=0,n=0;
-      const bx=l.bbox, pad=2;
-      try{
-        const strips=[
-          g2.getImageData(Math.max(0,bx.x0-pad),Math.max(0,bx.y0-pad),Math.min(c.width-bx.x0,bx.x1-bx.x0+2*pad),2),
-          g2.getImageData(Math.max(0,bx.x0-pad),Math.min(c.height-3,bx.y1+pad-2),Math.min(c.width-bx.x0,bx.x1-bx.x0+2*pad),2)
-        ];
-        for(const st of strips)for(let k=0;k<st.data.length;k+=4){r+=st.data[k];gc+=st.data[k+1];b+=st.data[k+2];n++;}
-      }catch(e){}
-      if(n){r=Math.round(r/n);gc=Math.round(gc/n);b=Math.round(b/n);}else{r=gc=b=235;}
-      const lum=0.299*r+0.587*gc+0.114*b;
-      const fg=lum>140?"#111":"#fff";
-      const d=document.createElement("div");
-      const x=bx.x0/c.width*100, y=bx.y0/c.height*100;
-      const bw=(bx.x1-bx.x0)/c.width*100, bh=(bx.y1-bx.y0)/c.height*100;
-      d.style.cssText="position:absolute;left:"+(x-0.5)+"%;top:"+(y-0.4)+"%;width:"+(Math.max(bw,6)+1)+"%;height:"+(bh+0.8)+"%;"
-        +"background:rgb("+r+","+gc+","+b+");color:"+fg+";"
-        +"display:flex;align-items:center;justify-content:center;text-align:center;"
-        +"font-weight:800;line-height:1.05;overflow:hidden;white-space:nowrap";
-      d.textContent=en;
-      newOverlay.appendChild(d);
-      // fit text to the box: shrink until it fits
-      requestAnimationFrame(()=>{
-        let fs=Math.max(9,d.clientHeight*0.72);
-        d.style.fontSize=fs+"px";
-        while(fs>8&&(d.scrollWidth>d.clientWidth||d.scrollHeight>d.clientHeight)){fs-=1;d.style.fontSize=fs+"px";}
-      });
+      const en=camCache[l.text];if(!en)continue;
+      let r=0,gg=0,b=0,cnt=0;const bx=l.bbox;
+      try{const strips=[g.getImageData(Math.max(0,bx.x0-2),Math.max(0,bx.y0-2),Math.min(c.width-bx.x0,bx.x1-bx.x0+4),2),g.getImageData(Math.max(0,bx.x0-2),Math.min(c.height-3,bx.y1),Math.min(c.width-bx.x0,bx.x1-bx.x0+4),2)];for(const st of strips)for(let k=0;k<st.data.length;k+=4){r+=st.data[k];gg+=st.data[k+1];b+=st.data[k+2];cnt++;}}catch(e){}
+      if(cnt){r=Math.round(r/cnt);gg=Math.round(gg/cnt);b=Math.round(b/cnt);}else{r=gg=b=235;}
+      const lum=0.299*r+0.587*gg+0.114*b;
+      placeBox(en,bx.x0/c.width*100-0.5,bx.y0/c.height*100-0.4,(bx.x1-bx.x0)/c.width*100+1,(bx.y1-bx.y0)/c.height*100+0.8,"rgb("+r+","+gg+","+b+")",lum>140?"#111":"#fff");n++;
     }
-    if(newOverlay.childNodes.length){camOverlay.innerHTML="";camOverlay.appendChild(newOverlay);frozen=true;}
-    camStatus.textContent=lines.length+" line(s) — exact positions (holding)";
+    if(n){frozen=true;camStatus.textContent=n+" line(s) — exact positions (holding)";}
   }catch(e){camStatus.textContent="Camera error: "+(e.message||"unknown");}
   camBusy=false;
 }
+async function visionFallback(c){
+  try{
+    const gc2=document.createElement("canvas");gc2.width=c.width;gc2.height=c.height;const g=gc2.getContext("2d");g.drawImage(c,0,0);
+    g.strokeStyle="rgba(255,0,0,0.5)";g.lineWidth=1;g.fillStyle="rgba(255,0,0,0.9)";g.font=Math.round(c.height*0.025)+"px sans-serif";
+    for(let i=1;i<10;i++){const gx=c.width*i/10,gy=c.height*i/10;g.beginPath();g.moveTo(gx,0);g.lineTo(gx,c.height);g.stroke();g.beginPath();g.moveTo(0,gy);g.lineTo(c.width,gy);g.stroke();g.fillText((i/10).toFixed(1),gx+2,12);g.fillText((i/10).toFixed(1),2,gy-3);}
+    const b64=gc2.toDataURL("image/jpeg",0.72).split(",")[1];
+    const r=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key()},
+      body:JSON.stringify({model:"gpt-4o-mini",max_tokens:600,response_format:{type:"json_object"},messages:[{role:"user",content:[{type:"image_url",image_url:{url:"data:image/jpeg;base64,"+b64}},
+        {type:"text",text:'Red grid = coordinates (labels 0.1-0.9). Find each block of Japanese text and TRANSLATE it into ENGLISH ("en" = English words only, never Japanese characters). Box read off the grid. JSON: {"blocks":[{"en":"...","x":0.1,"y":0.2,"w":0.3,"h":0.08}]}'}]}]})});
+    if(!r.ok)return;
+    const data=await r.json();
+    if(data.usage)addSpend((data.usage.prompt_tokens||0)*PRICE.mini_in+(data.usage.completion_tokens||0)*PRICE.mini_out);
+    let obj;try{obj=JSON.parse(stripFences(data.choices[0].message.content||""));}catch(e){return;}
+    let blocks=(Array.isArray(obj.blocks)?obj.blocks:[]).filter(b=>b.en);
+    const bad=blocks.filter(b=>JA_RE.test(b.en));
+    if(bad.length){const fix=await aiJSON('Translate each Japanese string to short natural English. JSON: {"t":["..."]} same order.\n'+JSON.stringify(bad.map(b=>b.en)),300);bad.forEach((b,k)=>{if(fix&&fix.t&&fix.t[k])b.en=fix.t[k];});blocks=blocks.filter(b=>!JA_RE.test(b.en));}
+    if(!blocks.length){camStatus.textContent="No Japanese text detected";return;}
+    camOverlay.innerHTML="";
+    for(const b of blocks){const x=Math.max(0,Math.min(1,+b.x||0))*100,y=Math.max(0,Math.min(1,+b.y||0))*100,bw=Math.max(0.06,Math.min(1,+b.w||0.3))*100,bh=Math.max(0.03,Math.min(1,+b.h||0.06))*100;placeBox(b.en,x,y,bw,bh,"rgba(10,12,20,.85)","#fff");}
+    frozen=true;camStatus.textContent=blocks.length+" block(s) — approximate (holding until you move)";
+  }catch(e){}
+}
 
-$("usageReset").onclick=()=>{spentUsd=0;warned80=false;warned95=false;localStorage.setItem("lt_spent","0");updateUsageLine();};
-const savedBudget=localStorage.getItem("lt_budget");if(savedBudget)$("budgetUsd").value=savedBudget;
-$("budgetUsd").addEventListener("change",()=>{localStorage.setItem("lt_budget",$("budgetUsd").value);warned80=false;warned95=false;updateUsageLine();});
-updateUsageLine();
-
-/* ---------- PWA ---------- */
+/* ================= PWA ================= */
 if("serviceWorker" in navigator){navigator.serviceWorker.register("sw.js").catch(()=>{});}
 </script>
 </body>
