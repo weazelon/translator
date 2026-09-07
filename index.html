@@ -8,75 +8,85 @@
 <link rel="apple-touch-icon" href="icon-192.png">
 <title>Live Translator</title>
 <style>
-  :root{--ink:#1c2230;--paper:#eef1f6;--panel:#ffffff;--accent:#2456d6;--accent-soft:#dbe5fb;--live:#d6244e;--ok:#1a8a5c;--line:#c7cedd;--muted:#5a6172;--reply-bg:#fafbfe;--err-bg:#fdecef;--err-line:#f3b8c6;--err-ink:#8f1735;--purple:#7a3fd4;--purple-soft:#a884e8}
-  body.dark{--ink:#e8ebf4;--paper:#12151d;--panel:#1c2130;--accent:#6f96ff;--accent-soft:#26304a;--live:#ff5c82;--ok:#4cd396;--line:#333b52;--muted:#9aa2b8;--reply-bg:#171c29;--err-bg:#3a1620;--err-line:#6d2436;--err-ink:#ffb3c2}
-  *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:"Segoe UI","Heebo","Hiragino Sans",Arial,sans-serif;background:var(--paper);color:var(--ink);min-height:100vh;display:flex;flex-direction:column;align-items:center;padding:12px;transition:background .2s,color .2s}
-  .app{width:100%;max-width:560px;display:flex;flex-direction:column;gap:12px}
-  header{display:flex;align-items:center;justify-content:space-between}
-  header h1{font-size:1.25rem;font-weight:800}
-  header h1 small{font-size:.65rem;color:var(--muted);font-weight:600}
-  header .right{display:flex;gap:8px;align-items:center}
-  .status{font-size:.82rem;color:var(--muted)}
-  .status.live{color:var(--live);font-weight:700}
-  .theme{border:1.5px solid var(--line);background:var(--panel);border-radius:10px;width:36px;height:36px;font-size:1rem;cursor:pointer}
-  .box{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:12px;display:flex;flex-direction:column;gap:6px}
-  .label{font-size:.78rem;color:var(--muted);font-weight:700}
-  .text{font-size:1.15rem;line-height:1.45;word-break:break-word}
-  .text.placeholder{color:var(--muted);opacity:.7}
-  .romaji{font-size:.95rem;color:#e0b400;font-style:italic;font-weight:600;direction:ltr;text-align:left}
-  body.dark .romaji{color:#ffd54a}
-  #histBox{max-height:38vh}
+  :root{--ink:#1c2230;--paper:#eef1f6;--panel:#ffffff;--panel2:#f6f8fc;--accent:#2456d6;--accent-soft:#dbe5fb;--live:#d6244e;--ok:#1a8a5c;--line:#d5dbe8;--muted:#5a6172;--reply-bg:#fafbfe;--err-bg:#fdecef;--err-line:#f3b8c6;--err-ink:#8f1735;--purple:#7a3fd4;--purple-soft:#a884e8;--romaji:#c99a00;--shadow:0 6px 20px rgba(20,30,60,.10);--r:16px}
+  body.dark{--ink:#e8ebf4;--paper:#0f1218;--panel:#181d29;--panel2:#1f2534;--accent:#6f96ff;--accent-soft:#26304a;--live:#ff5c82;--ok:#4cd396;--line:#2c3446;--muted:#9aa2b8;--reply-bg:#161b27;--err-bg:#3a1620;--err-line:#6d2436;--err-ink:#ffb3c2;--romaji:#ffd54a;--shadow:0 8px 24px rgba(0,0,0,.45)}
+  *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
+  html,body{height:100%}
+  body{font-family:Inter,"Segoe UI",Roboto,"Heebo","Hiragino Sans","Noto Sans JP",Arial,sans-serif;background:var(--paper);color:var(--ink);overscroll-behavior:none;transition:background .2s,color .2s}
+  button{font-family:inherit}
+  .app{height:100dvh;display:flex;flex-direction:column;max-width:760px;margin:0 auto;position:relative}
+  /* header */
+  header{flex:none;display:flex;align-items:center;gap:10px;padding:max(10px,env(safe-area-inset-top)) 14px 10px;background:var(--paper)}
+  header h1{font-size:1.15rem;font-weight:900;letter-spacing:-.01em;flex:1}
+  header h1 small{font-size:.6rem;color:var(--muted);font-weight:700;margin-inline-start:4px}
+  .status{font-size:.78rem;color:var(--muted);font-weight:600;max-width:40%;text-align:end;line-height:1.2}
+  .status.live{color:var(--live)}
+  .iconBtn{border:1px solid var(--line);background:var(--panel);border-radius:12px;width:38px;height:38px;font-size:1rem;cursor:pointer;color:var(--ink);display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow)}
+  /* main scroll column */
+  main{flex:1;min-height:0;display:flex;flex-direction:column;gap:10px;padding:0 12px 10px;overflow:hidden}
+  .box{background:var(--panel);border:1px solid var(--line);border-radius:var(--r);padding:12px;display:flex;flex-direction:column;gap:6px;box-shadow:var(--shadow);min-height:0}
+  .label{font-size:.74rem;color:var(--muted);font-weight:800;letter-spacing:.03em;text-transform:uppercase}
+  #histBox{flex:3 1 0}
   #histList{overflow-y:auto;flex:1;min-height:0;padding-inline-end:4px}
-  .turn{border-inline-start:3px solid var(--line);padding:6px 10px;margin-bottom:8px}
+  #repliesBox{flex:2 1 0;border-color:var(--ok)}
+  #repliesBox .label{color:var(--ok)}
+  #repliesList{overflow-y:auto;flex:1;min-height:0;padding-inline-end:4px}
+  #latestBox{flex:none;border-color:var(--accent)}
+  #latestBox .label{color:var(--accent)}
+  #typeIn{width:100%;border:none;outline:none;background:transparent;color:var(--ink);font-size:1.05rem;line-height:1.4;resize:none;font-family:inherit;min-height:1.4em;max-height:5em}
+  #typeIn::placeholder{color:var(--muted);opacity:.8}
+  .latestRow{display:flex;gap:8px;align-items:flex-end}
+  #typeGo{flex:none;border:none;border-radius:12px;background:var(--accent);color:#fff;font-weight:800;padding:8px 14px;cursor:pointer;display:none}
+  #typeGo.show{display:block}
+  #latestOut{border-top:1px dashed var(--line);padding-top:6px;margin-top:2px;display:none}
+  #latestOut.show{display:block}
+  .text{font-size:1.05rem;line-height:1.4;word-break:break-word}
+  .romaji{font-size:.95rem;color:var(--romaji);font-style:italic;font-weight:600;direction:ltr;text-align:left}
+  .turn{border-inline-start:3px solid var(--line);padding:6px 10px;margin-bottom:8px;border-radius:0 8px 8px 0;background:var(--panel2)}
   .turn.a{border-color:var(--accent)} .turn.b{border-color:var(--purple)}
-  .turn .who{font-size:.72rem;font-weight:800;opacity:.85;margin-bottom:2px}
+  .turn .who{font-size:.7rem;font-weight:800;opacity:.85;margin-bottom:2px}
   .turn.a .who{color:var(--accent)} .turn.b .who{color:var(--purple-soft)}
-  .turn .src{font-size:1.08rem;font-weight:600;color:var(--ink)}
+  .turn .src{font-size:1.05rem;font-weight:600;color:var(--ink)}
   .turn .dst{font-size:.95rem;color:var(--muted);font-weight:500}
   .turn.a .dst{font-size:1.02rem;color:var(--ink);font-weight:600}
-  .turn .ro{font-size:.92rem;color:#e0b400;font-style:italic;font-weight:600}
-  body.dark .turn .ro{color:#ffd54a}
-  #outBox{border-color:var(--accent);border-width:2px} #outBox .label{color:var(--accent)}
-  #inBox{max-height:16vh} #inText{overflow-y:auto}
-  #repliesBox{border-color:var(--ok);border-width:2px;max-height:34vh} #repliesBox .label{color:var(--ok)}
-  #repliesList{overflow-y:auto;flex:1;min-height:0;padding-inline-end:4px}
-  .reply{border:1px solid var(--ok);border-radius:10px;padding:9px 11px;margin-top:8px;cursor:pointer;background:var(--reply-bg)}
-  .reply .ja{font-size:1.05rem;font-weight:700} .reply .ro{font-size:.9rem;color:var(--muted);font-style:italic} .reply .mean{font-size:.9rem;color:var(--ok)}
-  .pair{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px;display:flex;align-items:center;gap:8px;justify-content:center}
-  select{font-size:1rem;font-weight:700;padding:8px 10px;border-radius:10px;border:1.5px solid var(--line);background:var(--panel);color:var(--ink)}
-  .swap{border:none;background:var(--accent-soft);color:var(--accent);width:40px;height:40px;border-radius:50%;font-size:1.1rem;cursor:pointer}
-  .controls{display:flex;gap:8px;align-items:stretch;justify-content:center;flex-wrap:wrap}
-  .mic{flex:1;max-width:220px;min-width:140px;height:58px;border-radius:18px;border:none;cursor:pointer;background:var(--accent);color:#fff;box-shadow:0 5px 14px rgba(36,86,214,.35);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
-  .mic .micIcon{font-size:1.3rem} .mic .micLbl{font-size:.82rem;font-weight:800}
-  .mic-b{background:var(--purple);box-shadow:0 5px 14px rgba(122,63,212,.35)}
-  .mic.listening{background:var(--live);animation:pulse 1.4s infinite}
-  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(214,36,78,.45)}70%{box-shadow:0 0 0 18px rgba(214,36,78,0)}100%{box-shadow:0 0 0 0 rgba(214,36,78,0)}}
-  .big{flex:1;min-height:76px;border:none;border-radius:20px;cursor:pointer;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:10px 14px;position:relative;overflow:hidden}
-  .big .bigIcon{width:26px;height:26px}
-  .big .bigLbl{font-size:1.05rem;font-weight:900;letter-spacing:.02em}
-  .big .bigSub{font-size:.72rem;opacity:.85;font-weight:600}
-  .big-simul{background:linear-gradient(135deg,#ff8a3d,#e8351e);box-shadow:0 8px 22px rgba(232,53,30,.35)}
+  .turn .kana{font-size:.95rem;color:var(--muted)}
+  .turn .note{font-size:.85rem;color:var(--ok);margin-top:2px}
+  .turn .ro{font-size:.92rem;color:var(--romaji);font-style:italic;font-weight:600}
+  .reply{border:1px solid var(--line);border-inline-start:3px solid var(--ok);border-radius:0 10px 10px 0;padding:9px 11px;margin-top:8px;cursor:pointer;background:var(--reply-bg)}
+  .reply:active{transform:scale(.99)}
+  .reply .ja{font-size:1.05rem;font-weight:700} .reply .ro{font-size:.92rem;color:var(--romaji);font-style:italic;font-weight:600} .reply .mean{font-size:.9rem;color:var(--ok)}
+  .pill{margin-inline-start:8px;border:none;border-radius:999px;background:var(--live);color:#fff;font-size:.7rem;font-weight:800;padding:2px 9px;cursor:pointer;vertical-align:middle;text-transform:none}
+  /* bottom dock */
+  .dock{flex:none;padding:8px 12px max(10px,env(safe-area-inset-bottom));background:var(--panel);border-top:1px solid var(--line);display:flex;flex-direction:column;gap:8px;box-shadow:0 -6px 20px rgba(0,0,0,.08)}
+  .row{display:flex;gap:8px}
+  .big{flex:1;min-height:62px;border:none;border-radius:16px;cursor:pointer;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;padding:8px 10px}
+  .big .bigIcon{width:22px;height:22px}
+  .big .bigLbl{font-size:.95rem;font-weight:900;letter-spacing:.02em}
+  .big .bigSub{font-size:.68rem;opacity:.9;font-weight:600}
+  .big-simul{background:linear-gradient(135deg,#ff8a3d,#e8351e);box-shadow:0 6px 18px rgba(232,53,30,.3)}
   .big-simul.on{background:linear-gradient(135deg,#ff3d6e,#c8102e);animation:pulse 1.4s infinite}
-  .big-cam{background:linear-gradient(135deg,#1fb6a6,#0e7c72);box-shadow:0 8px 22px rgba(14,124,114,.35);max-width:60%}
+  .big-cam{background:linear-gradient(135deg,#1fb6a6,#0e7c72);box-shadow:0 6px 18px rgba(14,124,114,.3)}
   .big-cam.on{outline:3px solid var(--ok)}
-  .side{border:1.5px solid var(--line);background:var(--panel);border-radius:12px;padding:9px 12px;cursor:pointer;font-size:.85rem;font-weight:700;color:var(--ink)}
-  .side.on{border-color:var(--ok);color:var(--ok)}
-  #lens{position:fixed;inset:0;z-index:500;background:#000;overflow:hidden}
-  #lensVideo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform-origin:center center}
-  #lensOverlay{position:absolute;inset:0;pointer-events:none;will-change:transform}
-  .lensTop{position:absolute;top:0;left:0;right:0;padding:max(10px,env(safe-area-inset-top)) 10px 10px;display:flex;align-items:center;gap:10px;background:linear-gradient(rgba(0,0,0,.55),transparent)}
-  .lensBottom{position:absolute;bottom:0;left:0;right:0;padding:12px 14px max(14px,env(safe-area-inset-bottom));display:flex;align-items:center;gap:10px;background:linear-gradient(transparent,rgba(0,0,0,.6))}
-  .lensBtn{border:none;border-radius:999px;background:rgba(255,255,255,.18);color:#fff;font-weight:800;padding:10px 14px;font-size:1rem;backdrop-filter:blur(6px)}
-  .lensBtn.on{background:var(--ok);color:#fff}
-  .lensStatus{flex:1;color:#fff;font-size:.85rem;font-weight:700;text-shadow:0 1px 3px #000;text-align:center}
-  .lensLbl{color:#fff;font-weight:800;font-size:.9rem}
-  #lensZoom{flex:1}
-  .lensBox{position:absolute;display:flex;align-items:center;justify-content:center;text-align:center;font-weight:800;line-height:1.05;overflow:hidden;border-radius:4px;padding:1px 4px;box-shadow:0 0 0 1px rgba(0,0,0,.15);animation:lensIn .18s}
-  @keyframes lensIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
-  .pill{margin-inline-start:8px;border:none;border-radius:999px;background:var(--live);color:#fff;font-size:.72rem;font-weight:800;padding:2px 9px;cursor:pointer;vertical-align:middle}
-  .hint{text-align:center;font-size:.8rem;color:var(--muted)}
-  .err{display:none;background:var(--err-bg);border:1px solid var(--err-line);color:var(--err-ink);border-radius:12px;padding:10px 12px;font-size:.88rem} .err.show{display:block}
+  .mic{flex:1;min-height:54px;border-radius:14px;border:none;cursor:pointer;background:var(--accent);color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:1px;box-shadow:0 5px 14px rgba(36,86,214,.3)}
+  .mic .micIcon{font-size:1.05rem} .mic .micLbl{font-size:.78rem;font-weight:800}
+  .mic-b{background:var(--purple);box-shadow:0 5px 14px rgba(122,63,212,.3)}
+  .mic.listening{background:var(--live);animation:pulse 1.4s infinite}
+  @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(214,36,78,.45)}70%{box-shadow:0 0 0 14px rgba(214,36,78,0)}100%{box-shadow:0 0 0 0 rgba(214,36,78,0)}}
+  .chip{border:1px solid var(--line);background:var(--panel2);border-radius:999px;padding:7px 12px;cursor:pointer;font-size:.8rem;font-weight:800;color:var(--ink);white-space:nowrap}
+  .chip.on{border-color:var(--ok);color:var(--ok)}
+  .chips{display:flex;gap:8px;justify-content:center;flex-wrap:wrap}
+  /* sheets */
+  .sheetWrap{position:fixed;inset:0;z-index:600;display:none;align-items:flex-end;justify-content:center;background:rgba(0,0,0,.45)}
+  .sheetWrap.show{display:flex}
+  .sheet{width:100%;max-width:560px;max-height:85dvh;overflow-y:auto;background:var(--panel);border-radius:22px 22px 0 0;padding:14px 16px max(18px,env(safe-area-inset-bottom));box-shadow:0 -10px 40px rgba(0,0,0,.35);animation:up .2s}
+  @keyframes up{from{transform:translateY(30px);opacity:0}to{transform:none;opacity:1}}
+  .sheet h2{font-size:1.05rem;font-weight:900;margin-bottom:10px;display:flex;align-items:center;justify-content:space-between}
+  .sheet .field{margin:12px 0}
+  .sheet input[type=text],.sheet input[type=password],.sheet input[type=number],.sheet select{width:100%;padding:11px;border-radius:12px;border:1.5px solid var(--line);background:var(--panel2);color:var(--ink);font-size:.95rem;margin-top:6px;font-family:inherit}
+  .sheet input[type=range]{width:100%;margin-top:6px}
+  .hint{font-size:.78rem;color:var(--muted)}
+  .side{border:1.5px solid var(--line);background:var(--panel2);border-radius:12px;padding:9px 12px;cursor:pointer;font-size:.85rem;font-weight:700;color:var(--ink)}
+  .err{display:none;background:var(--err-bg);border:1px solid var(--err-line);color:var(--err-ink);border-radius:12px;padding:10px 12px;font-size:.88rem;flex:none} .err.show{display:block}
   .popup-wrap{position:fixed;top:10px;left:10px;right:10px;z-index:999;display:flex;flex-direction:column;gap:8px;pointer-events:none}
   .popup{pointer-events:auto;border-radius:12px;padding:11px 13px;font-size:.9rem;line-height:1.4;box-shadow:0 8px 24px rgba(0,0,0,.45);display:flex;gap:10px;align-items:flex-start;animation:pin .2s}
   @keyframes pin{from{transform:translateY(-8px);opacity:0}to{transform:none;opacity:1}}
@@ -85,7 +95,26 @@
   .popup.api{background:#3a2a10;border:1px solid #6d5324;color:#ffd9a0} .popup.api .tag{background:#6d5324;color:#fff}
   .popup.net{background:#10283a;border:1px solid #24506d;color:#a0d4ff} .popup.net .tag{background:#24506d;color:#fff}
   .popup .x{margin-inline-start:auto;background:none;border:none;color:inherit;font-size:1rem;cursor:pointer}
-  input[type=password],input[type=number]{padding:10px;border-radius:10px;border:1.5px solid var(--line);background:var(--panel);color:var(--ink);font-size:.95rem}
+  /* lens */
+  #lens{position:fixed;inset:0;z-index:500;background:#000;overflow:hidden}
+  #lensVideo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform-origin:center center}
+  #lensOverlay{position:absolute;inset:0;pointer-events:none;will-change:transform}
+  .lensTop{position:absolute;top:0;left:0;right:0;padding:max(10px,env(safe-area-inset-top)) 10px 10px;display:flex;align-items:center;gap:10px;background:linear-gradient(rgba(0,0,0,.55),transparent)}
+  .lensBottom{position:absolute;bottom:0;left:0;right:0;padding:12px 14px max(14px,env(safe-area-inset-bottom));display:flex;align-items:center;gap:10px;background:linear-gradient(transparent,rgba(0,0,0,.6))}
+  .lensBtn{border:none;border-radius:999px;background:rgba(255,255,255,.18);color:#fff;font-weight:800;padding:10px 14px;font-size:1rem;backdrop-filter:blur(6px)}
+  .lensBtn.on{background:var(--ok);color:#fff}
+  .lensStatus{flex:1;color:#fff;font-size:.85rem;font-weight:700;text-shadow:0 1px 3px #000;text-align:center}
+  .lensLbl{color:#fff;font-weight:800;font-size:.9rem} #lensZoom{flex:1}
+  .lensBox{position:absolute;display:flex;align-items:center;justify-content:center;text-align:center;font-weight:800;line-height:1.05;overflow:hidden;border-radius:4px;padding:1px 4px;box-shadow:0 0 0 1px rgba(0,0,0,.15);animation:lensIn .18s}
+  @keyframes lensIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
+  /* desktop */
+  @media (min-width:760px){
+    .app{max-width:820px;padding:0 8px}
+    header{padding-top:16px}
+    .big{min-height:70px} .mic{min-height:60px}
+    .sheetWrap{align-items:center} .sheet{border-radius:22px;max-height:80vh}
+    .lensTop,.lensBottom{max-width:820px;margin:0 auto}
+  }
 </style>
 </head>
 <body>
@@ -103,90 +132,82 @@
     <button class="lensBtn" id="lensFreeze">⏸ Hold</button>
   </div>
 </div>
+
 <div class="app">
   <header>
-    <h1>Live Translator <small>v41</small></h1>
-    <div class="right"><button class="theme" id="themeBtn">🌙</button><div class="status" id="status">Ready</div></div>
+    <h1>Live Translator<small>v43</small></h1>
+    <div class="status" id="status">Ready</div>
+    <button class="iconBtn" id="listenBtn" title="Listening settings">🎧</button>
+    <button class="iconBtn" id="settingsBtn" title="Settings">⚙️</button>
+    <button class="iconBtn" id="themeBtn" title="Theme">🌙</button>
   </header>
 
-  <div class="box" id="histBox" style="display:none"><div class="label">Conversation (newest first) <button class="pill" id="histPill" style="display:none">↑ new</button></div><div id="histList"></div></div>
-  <div class="box" id="repliesBox" style="display:none"><div class="label">💬 Suggested replies — tap to hear in Japanese <button class="pill" id="repPill" style="display:none">↑ new</button></div><div id="repliesList"></div></div>
-  <div class="box" id="outBox"><div class="label">Translation</div><div class="text placeholder" id="outText">…</div><div class="romaji" id="outRomaji"></div></div>
-  <div class="box" id="inBox"><div class="label">Heard</div><div class="text placeholder" id="inText">Tap a mic and speak…</div></div>
-
-  <div class="pair">
-    <select id="srcLang"><option value="en" selected>English</option><option value="ja">日本語 Japanese</option><option value="he">עברית Hebrew</option></select>
-    <button class="swap" id="swapBtn">⇄</button>
-    <select id="dstLang"><option value="en">English</option><option value="ja" selected>日本語 Japanese</option><option value="he">עברית Hebrew</option></select>
-  </div>
-  <div class="controls">
-    <button class="big big-simul" id="simulBtn">
-      <svg class="bigIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
-      <span class="bigLbl">Simultaneous</span><span class="bigSub" id="simulSub">tap to start — hears both languages</span>
-    </button>
-  </div>
-  <div class="controls">
-    <button class="mic" id="micBtn"><span class="micIcon">🎤</span><span class="micLbl" id="micLblA">EN → JA</span></button>
-    <button class="mic mic-b" id="micBtnB"><span class="micIcon">🎤</span><span class="micLbl" id="micLblB">JA → EN</span></button>
-  </div>
-  <div class="controls">
-    <button class="big big-cam" id="camBtn">
-      <svg class="bigIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h3l2-3h6l2 3h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z"/><circle cx="12" cy="13" r="4"/></svg>
-      <span class="bigLbl">Camera</span><span class="bigSub">translate signs &amp; menus in place</span>
-    </button>
-    <div style="display:flex;flex-direction:column;gap:6px;justify-content:center">
-      <button class="side" id="regBtn">😎 Casual</button>
-      <button class="side" id="autoSpeak">🔊 Auto-speak: OFF</button>
-    </div>
-  </div>
-
-
-  <div class="err" id="err"></div>
-
-  <details class="box" style="min-height:0" id="listenPanel">
-    <summary class="label" style="cursor:pointer">🎧 Listening settings</summary>
-    <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px">
-      <div>
-        <div class="label">Mic sensitivity <span id="sensVal" style="color:var(--ok)">normal</span></div>
-        <input type="range" id="sensRange" min="1" max="5" step="1" value="3" style="width:100%">
-        <div class="hint" style="text-align:start">← quiet room &nbsp;·&nbsp; noisy bar →</div>
+  <main>
+    <div class="box" id="histBox" style="display:none"><div class="label">Conversation <button class="pill" id="histPill" style="display:none">↑ new</button></div><div id="histList"></div></div>
+    <div class="box" id="repliesBox" style="display:none"><div class="label">💬 Suggested replies · tap to hear <button class="pill" id="repPill" style="display:none">↑ new</button></div><div id="repliesList"></div></div>
+    <div class="box" id="latestBox">
+      <div class="label">Translate · tap to type</div>
+      <div class="latestRow">
+        <textarea id="typeIn" rows="1" placeholder="Type English, Hebrew or Japanese (hiragana ok)…"></textarea>
+        <button id="typeGo">Go</button>
       </div>
-      <div>
-        <div class="label">Pause that ends a sentence <span id="pauseVal" style="color:var(--ok)">0.5 s</span></div>
-        <input type="range" id="pauseRange" min="300" max="1200" step="100" value="500" style="width:100%">
-        <div class="hint" style="text-align:start">← snappier &nbsp;·&nbsp; fewer mid-sentence cuts →</div>
-      </div>
-      <div>
-        <div class="label">Scene (vocabulary hint)</div>
-        <select id="sceneSel" style="width:100%;margin-top:4px">
-          <option value="">General conversation</option>
-          <option value="izakaya">Izakaya / bar / drinks</option>
-          <option value="restaurant">Restaurant / ordering food</option>
-          <option value="shopping">Shopping / electronics / anime goods</option>
-          <option value="station">Train station / directions</option>
-          <option value="hotel">Hotel / check-in</option>
-          <option value="dating">Meeting people / dating</option>
-          <option value="gaming">Arcade / game bar</option>
-        </select>
-      </div>
-      <div>
-        <div class="label">Custom words &amp; names (comma separated)</div>
-        <input type="text" id="customWords" placeholder="Reina, Den Den Town, Ikebukuro, Quinn" style="width:100%;margin-top:4px;padding:10px;border-radius:10px;border:1.5px solid var(--line);background:var(--panel);color:var(--ink);font-size:.95rem">
+      <div id="latestOut">
+        <div class="text" id="inText" style="color:var(--muted);font-size:.95rem"></div>
+        <div class="text" id="outText"></div>
+        <div class="romaji" id="outRomaji"></div>
       </div>
     </div>
-  </details>
+    <div class="err" id="err"></div>
+  </main>
 
-  <details class="box" style="min-height:0">
-    <summary class="label" style="cursor:pointer">⚙️ Settings — OpenAI API key</summary>
-    <input type="password" id="oaiKey" placeholder="OpenAI API key: sk-..." style="margin-top:8px;width:100%">
-    <div class="hint" style="text-align:start;margin-top:6px">Stored on this device only.</div>
-    <div style="display:flex;gap:8px;align-items:center;margin-top:8px;flex-wrap:wrap">
-      <span class="label">Budget $</span><input type="number" id="budgetUsd" value="5" min="1" step="1" style="width:70px">
-      <span class="hint" id="usageLine" style="text-align:start"></span>
-      <button class="side" id="usageReset" style="margin-inline-start:auto">Reset counter</button>
+  <div class="dock">
+    <div class="row">
+      <button class="big big-simul" id="simulBtn">
+        <svg class="bigIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+        <span class="bigLbl">Simultaneous</span><span class="bigSub" id="simulSub">hears both languages</span>
+      </button>
+      <button class="big big-cam" id="camBtn" style="max-width:38%">
+        <svg class="bigIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h3l2-3h6l2 3h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z"/><circle cx="12" cy="13" r="4"/></svg>
+        <span class="bigLbl">Camera</span><span class="bigSub">signs &amp; menus</span>
+      </button>
     </div>
-  </details>
-  <div class="hint">Works best in Chrome / Android Chrome.</div>
+    <div class="row">
+      <button class="mic" id="micBtn"><span class="micIcon">🎤</span><span class="micLbl" id="micLblA">EN → JA</span></button>
+      <button class="mic mic-b" id="micBtnB"><span class="micIcon">🎤</span><span class="micLbl" id="micLblB">JA → EN</span></button>
+    </div>
+    <div class="chips">
+      <button class="chip" id="regBtn">😎 Casual</button>
+      <button class="chip" id="autoSpeak">🔊 Auto-speak: OFF</button>
+    </div>
+  </div>
+</div>
+
+<!-- Settings sheet -->
+<div class="sheetWrap" id="settingsSheet">
+  <div class="sheet">
+    <h2>⚙️ Settings <button class="side" data-close="settingsSheet">Done</button></h2>
+    <div class="field"><div class="label">Language pair (for the two mic buttons)</div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:6px">
+        <select id="srcLang" style="margin:0"><option value="en" selected>English</option><option value="ja">日本語 Japanese</option><option value="he">עברית Hebrew</option></select>
+        <button class="side" id="swapBtn">⇄</button>
+        <select id="dstLang" style="margin:0"><option value="en">English</option><option value="ja" selected>日本語 Japanese</option><option value="he">עברית Hebrew</option></select>
+      </div></div>
+    <div class="field"><div class="label">OpenAI API key</div><input type="password" id="oaiKey" placeholder="sk-..."><div class="hint">Stored on this device only.</div></div>
+    <div class="field"><div class="label">Budget</div>
+      <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><span>$</span><input type="number" id="budgetUsd" value="5" min="1" step="1" style="width:90px;margin:0"><span class="hint" id="usageLine" style="flex:1"></span><button class="side" id="usageReset">Reset</button></div></div>
+  </div>
+</div>
+
+<!-- Listening sheet -->
+<div class="sheetWrap" id="listenSheet">
+  <div class="sheet">
+    <h2>🎧 Listening <button class="side" data-close="listenSheet">Done</button></h2>
+    <div class="field"><div class="label">Mic sensitivity · <span id="sensVal" style="color:var(--ok)">normal</span></div><input type="range" id="sensRange" min="1" max="5" step="1" value="3"><div class="hint">← quiet room · noisy bar →</div></div>
+    <div class="field"><div class="label">Pause that ends a sentence · <span id="pauseVal" style="color:var(--ok)">0.5 s</span></div><input type="range" id="pauseRange" min="300" max="1200" step="100" value="500"><div class="hint">← snappier · fewer mid-sentence cuts →</div></div>
+    <div class="field"><div class="label">Scene (vocabulary hint)</div>
+      <select id="sceneSel"><option value="">General conversation</option><option value="izakaya">Izakaya / bar / drinks</option><option value="restaurant">Restaurant / ordering food</option><option value="shopping">Shopping / electronics / anime goods</option><option value="station">Train station / directions</option><option value="hotel">Hotel / check-in</option><option value="dating">Meeting people / dating</option><option value="gaming">Arcade / game bar</option></select></div>
+    <div class="field"><div class="label">Custom words &amp; names</div><input type="text" id="customWords" placeholder="Reina, Den Den Town, Ikebukuro, Quinn"><div class="hint">Comma separated — spelled exactly like this in transcripts and translations.</div></div>
+  </div>
 </div>
 
 <script>
@@ -223,6 +244,14 @@ function showErr(msg){const c=classifyError(msg);popup(c.kind,c.tag,c.text);errE
 function clearErr(){errEl.classList.remove("show");}
 window.addEventListener("error",e=>popup("app","APP BUG",(e.message||"Unknown script error")+" — screenshot this and send it to Claude."));
 window.addEventListener("unhandledrejection",e=>showErr((e.reason&&e.reason.message)||String(e.reason||"Unknown error")));
+
+/* ================= sheets ================= */
+function openSheet(id){$(id).classList.add("show");}
+function closeSheet(id){$(id).classList.remove("show");}
+$("settingsBtn").onclick=()=>openSheet("settingsSheet");
+$("listenBtn").onclick=()=>openSheet("listenSheet");
+document.querySelectorAll("[data-close]").forEach(b=>b.onclick=()=>closeSheet(b.dataset.close));
+document.querySelectorAll(".sheetWrap").forEach(w=>w.addEventListener("click",e=>{if(e.target===w)w.classList.remove("show");}));
 
 /* ================= theme / key / budget ================= */
 const themeBtn=$("themeBtn");
@@ -532,8 +561,8 @@ async function processSegment(blob,fSrc,fDst){
     if(!text||text.length<2||JUNK.some(j=>tl===j)){mutateKeep(histList,()=>el.remove());return;}
     const segSrc=fSrc||(JA_RE.test(text)?"ja":HE_RE.test(text)?"he":"en");
     const segDst=fDst||(segSrc==="en"?"ja":"en");
-    inText.classList.remove("placeholder");inText.textContent=text;inText.dir=segSrc==="he"?"rtl":"ltr";
-    outText.classList.remove("placeholder");outText.textContent="…";outRomaji.textContent="";
+    latestOut.classList.add("show");inText.textContent=text;inText.dir=segSrc==="he"?"rtl":"ltr";
+    outText.textContent="…";outRomaji.textContent="";
     mutateKeep(histList,()=>{
       el.className="turn "+(segSrc==="en"?"a":"b");
       el.querySelector(".who").textContent="🗣 "+LANG[segSrc].label;
@@ -553,6 +582,65 @@ async function processSegment(blob,fSrc,fDst){
     const meaningLang=(segSrc==="he"||segDst==="he")?"Hebrew":"English";
     pSug.then(reps=>addSuggestionSet(reps,text,meaningLang==="Hebrew"?"rtl":"ltr",jaInput?"reply":"follow")).catch(()=>{});
   }catch(e){el.remove();showErr("Simultaneous error: "+(e.message||"unknown"));}
+}
+
+/* ================= TYPED TRANSLATION ================= */
+const typeIn=$("typeIn"),typeGo=$("typeGo"),latestOut=$("latestOut");
+typeIn.dir="auto";
+typeIn.addEventListener("input",()=>{typeGo.classList.toggle("show",!!typeIn.value.trim());typeIn.style.height="auto";typeIn.style.height=Math.min(typeIn.scrollHeight,110)+"px";});
+typeGo.onclick=()=>typedGo();
+typeIn.addEventListener("keydown",e=>{if(e.key==="Enter"&&!e.shiftKey){e.preventDefault();typedGo();}});
+async function typedGo(){
+  const text=typeIn.value.trim();if(!text)return;
+  if(!keyCheck())return;
+  typeIn.value="";typeGo.classList.remove("show");typeIn.style.height="auto";typeIn.blur();
+  const src=JA_RE.test(text)?"ja":HE_RE.test(text)?"he":"en";
+  const dst=src==="ja"?"en":"ja";
+  const el=pushTurn(src==="en"?"a":"b",text,"…","",src);
+  el.querySelector(".who").textContent="⌨️ "+LANG[src].label+" (typed)";
+  const kana=document.createElement("div");kana.className="kana";
+  const note=document.createElement("div");note.className="note";
+  el.appendChild(kana);el.appendChild(note);
+  try{
+    let o;
+    if(src==="ja"){
+      o=await aiJSON(ctxBlock()+'The user (a learner who knows hiragana but not kanji or katakana) typed this Japanese: "'+text.replace(/"/g,"\'")+'"\n'
+        +'1) Correct it into natural Japanese a native would say ('+(register==="casual"?"casual":"polite")+'). Keep the meaning. If it is already natural, keep it.\n'
+        +'2) Give the corrected version in hiragana only (no kanji, no katakana; convert katakana words to hiragana too).\n'
+        +'3) Hepburn romaji of the corrected version.\n4) English translation.\n5) One short English note on what was fixed (empty if nothing).\n'
+        +'JSON: {"ja":"corrected Japanese","kana":"hiragana only","romaji":"...","en":"...","note":"..."}',400,"gpt-4o");
+      if(!o)throw new Error("empty");
+      mutateKeep(histList,()=>{
+        el.querySelector(".src").textContent=o.ja||text;
+        el.querySelector(".ro").textContent=o.romaji||"";
+        el.querySelector(".dst").textContent=o.en||"";
+        kana.textContent=o.kana?"かな: "+o.kana:"";
+        note.textContent=o.note?"✎ "+o.note:"";
+        if(o.ja&&o.ja!==text)note.textContent=(note.textContent?note.textContent+"  ·  ":"")+"you typed: "+text;
+      });
+      pushCtx("ja",o.ja||text,"en",o.en||"");
+      latestOut.classList.add("show");inText.textContent=o.ja||text;outText.textContent=o.en||"";outRomaji.textContent=o.romaji||"";
+    }else{
+      o=await aiJSON(ctxBlock()+'Translate this '+LANG[src].name+' into Japanese. '+nativeJa()+'\n'
+        +'Also give the Japanese in hiragana only (no kanji, no katakana; convert katakana words to hiragana), and Hepburn romaji.\n'
+        +'JSON: {"ja":"...","kana":"hiragana only","romaji":"Latin letters only"}\nText: '+text,300,"gpt-4o");
+      if(!o||!o.ja)throw new Error("empty");
+      mutateKeep(histList,()=>{
+        el.querySelector(".dst").textContent=o.ja;
+        el.querySelector(".ro").textContent=o.romaji||"";
+        kana.textContent=o.kana?"かな: "+o.kana:"";
+        // order: typed text → Japanese → kana → romaji
+        const w=el.querySelector(".who"),sr=el.querySelector(".src"),ds=el.querySelector(".dst"),ro=el.querySelector(".ro");
+        el.append(w,sr,ds,kana,ro,note);
+      });
+      pushCtx(src,text,"ja",o.ja);
+      latestOut.classList.add("show");inText.textContent=text;outText.textContent=o.ja;outRomaji.textContent=o.romaji||"";
+      if(autoSpeak)speak(o.ja,"ja");
+    }
+    // tap the entry to hear the Japanese
+    const jaText=src==="ja"?(o.ja||text):o.ja;
+    el.style.cursor="pointer";el.title="tap to hear";el.onclick=()=>speak(jaText,"ja");
+  }catch(e){mutateKeep(histList,()=>{el.querySelector(".dst").textContent="(failed)";});showErr("Translation error — "+(e.message||""));}
 }
 
 /* ================= LENS (fullscreen camera translate, vision-only, streaming) ================= */
