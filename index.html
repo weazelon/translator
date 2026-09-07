@@ -44,11 +44,19 @@
   select{font-size:1rem;font-weight:700;padding:8px 10px;border-radius:10px;border:1.5px solid var(--line);background:var(--panel);color:var(--ink)}
   .swap{border:none;background:var(--accent-soft);color:var(--accent);width:40px;height:40px;border-radius:50%;font-size:1.1rem;cursor:pointer}
   .controls{display:flex;gap:8px;align-items:stretch;justify-content:center;flex-wrap:wrap}
-  .mic{flex:1;max-width:220px;min-width:140px;height:68px;border-radius:18px;border:none;cursor:pointer;background:var(--accent);color:#fff;box-shadow:0 5px 14px rgba(36,86,214,.35);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
+  .mic{flex:1;max-width:220px;min-width:140px;height:58px;border-radius:18px;border:none;cursor:pointer;background:var(--accent);color:#fff;box-shadow:0 5px 14px rgba(36,86,214,.35);display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px}
   .mic .micIcon{font-size:1.3rem} .mic .micLbl{font-size:.82rem;font-weight:800}
   .mic-b{background:var(--purple);box-shadow:0 5px 14px rgba(122,63,212,.35)}
   .mic.listening{background:var(--live);animation:pulse 1.4s infinite}
   @keyframes pulse{0%{box-shadow:0 0 0 0 rgba(214,36,78,.45)}70%{box-shadow:0 0 0 18px rgba(214,36,78,0)}100%{box-shadow:0 0 0 0 rgba(214,36,78,0)}}
+  .big{flex:1;min-height:76px;border:none;border-radius:20px;cursor:pointer;color:#fff;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:2px;padding:10px 14px;position:relative;overflow:hidden}
+  .big .bigIcon{width:26px;height:26px}
+  .big .bigLbl{font-size:1.05rem;font-weight:900;letter-spacing:.02em}
+  .big .bigSub{font-size:.72rem;opacity:.85;font-weight:600}
+  .big-simul{background:linear-gradient(135deg,#ff8a3d,#e8351e);box-shadow:0 8px 22px rgba(232,53,30,.35)}
+  .big-simul.on{background:linear-gradient(135deg,#ff3d6e,#c8102e);animation:pulse 1.4s infinite}
+  .big-cam{background:linear-gradient(135deg,#1fb6a6,#0e7c72);box-shadow:0 8px 22px rgba(14,124,114,.35);max-width:60%}
+  .big-cam.on{outline:3px solid var(--ok)}
   .side{border:1.5px solid var(--line);background:var(--panel);border-radius:12px;padding:9px 12px;cursor:pointer;font-size:.85rem;font-weight:700;color:var(--ink)}
   .side.on{border-color:var(--ok);color:var(--ok)}
   .hint{text-align:center;font-size:.8rem;color:var(--muted)}
@@ -68,7 +76,7 @@
 <div class="popup-wrap" id="popups"></div>
 <div class="app">
   <header>
-    <h1>Live Translator <small>v30</small></h1>
+    <h1>Live Translator <small>v31</small></h1>
     <div class="right"><button class="theme" id="themeBtn">🌙</button><div class="status" id="status">Ready</div></div>
   </header>
 
@@ -83,14 +91,21 @@
     <select id="dstLang"><option value="en">English</option><option value="ja" selected>日本語 Japanese</option><option value="he">עברית Hebrew</option></select>
   </div>
   <div class="controls">
+    <button class="big big-simul" id="simulBtn">
+      <svg class="bigIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M13 2 3 14h9l-1 8 10-12h-9l1-8z"/></svg>
+      <span class="bigLbl">Simultaneous</span><span class="bigSub" id="simulSub">tap to start — hears both languages</span>
+    </button>
+  </div>
+  <div class="controls">
     <button class="mic" id="micBtn"><span class="micIcon">🎤</span><span class="micLbl" id="micLblA">EN → JA</span></button>
     <button class="mic mic-b" id="micBtnB"><span class="micIcon">🎤</span><span class="micLbl" id="micLblB">JA → EN</span></button>
   </div>
   <div class="controls">
-    <button class="side" id="simulBtn">⚡ Simultaneous: OFF</button>
-    <button class="side" id="convoBtn">🗣 Conversation: OFF</button>
-    <button class="side" id="autoSpeak">🔊 Auto-speak: OFF</button>
-    <button class="side" id="camBtn">📷 Camera</button>
+    <button class="big big-cam" id="camBtn">
+      <svg class="bigIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h3l2-3h6l2 3h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z"/><circle cx="12" cy="13" r="4"/></svg>
+      <span class="bigLbl">Camera</span><span class="bigSub">translate signs &amp; menus in place</span>
+    </button>
+    <button class="side" id="autoSpeak" style="align-self:center">🔊 Auto-speak: OFF</button>
   </div>
 
   <div class="box" id="camBox" style="display:none">
@@ -125,7 +140,7 @@ const LANG={en:{name:"English",bcp:"en-US",label:"English"},ja:{name:"Japanese",
 const JA_RE=/[\u3040-\u30ff\u4e00-\u9fff]/, HE_RE=/[\u0590-\u05ff]/;
 const $=id=>document.getElementById(id);
 const srcSel=$("srcLang"),dstSel=$("dstLang"),micBtn=$("micBtn"),micBtnB=$("micBtnB"),inText=$("inText"),outText=$("outText"),outRomaji=$("outRomaji"),
-      statusEl=$("status"),errEl=$("err"),autoSpeakBtn=$("autoSpeak"),convoBtn=$("convoBtn"),simulBtn=$("simulBtn"),
+      statusEl=$("status"),errEl=$("err"),autoSpeakBtn=$("autoSpeak"),simulBtn=$("simulBtn"),
       histBox=$("histBox"),histList=$("histList"),repliesBox=$("repliesBox"),repliesList=$("repliesList");
 const esc=x=>String(x).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
 const stripFences=x=>x.replace(/```json|```/g,"").trim();
@@ -258,7 +273,6 @@ function speak(text,lang){
   speechSynthesis.speak(u);
 }
 if(window.speechSynthesis)speechSynthesis.getVoices();
-function waitForSpeech(){return new Promise(res=>{if(!window.speechSynthesis||!speechSynthesis.speaking){res();return;}const iv=setInterval(()=>{if(!speechSynthesis.speaking){clearInterval(iv);res();}},100);setTimeout(()=>{clearInterval(iv);res();},15000);});}
 
 /* ================= pair selectors ================= */
 function ensureDifferent(changed){if(srcSel.value===dstSel.value){const other=["en","ja","he"].find(l=>l!==srcSel.value);(changed==="src"?dstSel:srcSel).value=other;}}
@@ -268,93 +282,22 @@ dstSel.onchange=()=>{ensureDifferent("dst");refreshMicLabels();};
 $("swapBtn").onclick=()=>{const a=srcSel.value;srcSel.value=dstSel.value;dstSel.value=a;refreshMicLabels();};
 refreshMicLabels();
 
-/* ================= mic modes (browser speech recognition) ================= */
-const SR=window.SpeechRecognition||window.webkitSpeechRecognition;
-if(!SR){showErr("Speech recognition not supported — use Chrome.");micBtn.disabled=true;micBtnB.disabled=true;}
-let listening=false,rec=null,convoMode=false,turnTimer=null,activeSrc="en",activeDst="ja",activeBtn=null,listeningStoppedManually=false;
-let translatedSoFar="",pendingQueue=[],translating=false,sessionSourceText="",extrasTimer=null,translationFailed=false,displayDirty=false,lastTurnEl=null;
-
-function resetSession(){translationFailed=false;translatedSoFar="";pendingQueue=[];sessionSourceText="";displayDirty=true;}
-function clearDisplayIfDirty(){if(!displayDirty)return;displayDirty=false;outText.textContent="…";outText.classList.add("placeholder");outRomaji.textContent="";inText.textContent="";}
-function mergeOverlap(a,b){a=a.trim();b=b.trim();if(!a)return b;if(!b)return a;const al=a.toLowerCase(),bl=b.toLowerCase();if(al.endsWith(bl))return a;for(let k=Math.min(al.length,bl.length);k>0;k--)if(al.slice(-k)===bl.slice(0,k))return a+" "+b.slice(k).trim();return a+" "+b;}
-
-function startListening(){
-  clearErr();
-  if(!keyCheck()){stopUI();setConvo(false);return;}
-  resetSession();
-  rec=new SR();rec.lang=LANG[activeSrc].bcp;rec.interimResults=true;rec.continuous=true;
-  let enqueuedLen=0;
-  rec.onresult=e=>{
-    let finals="",interim="";
-    for(let i=0;i<e.results.length;i++){const t=e.results[i][0].transcript.trim();if(!t)continue;if(e.results[i].isFinal)finals=mergeOverlap(finals,t);else interim=mergeOverlap(interim,t);}
-    sessionSourceText=finals;
-    if(finals||interim)clearDisplayIfDirty();
-    if(finals.length>enqueuedLen){
-      const np=finals.slice(enqueuedLen).trim();enqueuedLen=finals.length;
-      if(np)enqueueChunk(np);
-      if(convoMode){if(turnTimer)clearTimeout(turnTimer);turnTimer=setTimeout(()=>{try{rec.stop();}catch(x){}},1300);}
-    }
-    inText.classList.remove("placeholder");inText.textContent=interim?mergeOverlap(finals,interim):finals;inText.dir=activeSrc==="he"?"rtl":"ltr";
-  };
-  rec.onerror=e=>{if(e.error==="no-speech")setStatus("No speech detected");else if(e.error==="not-allowed")showErr("Mic permission denied.");else if(e.error!=="aborted")showErr("Recognition error: "+e.error);};
-  rec.onend=async()=>{
-    if(convoMode&&listening&&!listeningStoppedManually){
-      stopUI();
-      while(translating||pendingQueue.length){await new Promise(r=>setTimeout(r,100));}
-      if(!sessionSourceText){startListening();return;}
-      if(translationFailed||!translatedSoFar){setConvo(false);stopUI();return;}
-      pushTurnToHistory();fetchExtras();
-      await waitForSpeech();
-      [activeSrc,activeDst]=[activeDst,activeSrc];activeBtn=(activeBtn===micBtn)?micBtnB:micBtn;
-      startListening();return;
-    }
-    if(listening&&!listeningStoppedManually){try{rec.start();}catch(x){}return;}
-    stopUI();
-  };
-  rec.start();startUI();
+/* ================= mic buttons = same engine, forced direction ================= */
+let forcedSrc=null,forcedDst=null,activeBtn=null;
+function refreshMicUI(){
+  micBtn.classList.toggle("listening",simulOn&&activeBtn===micBtn);
+  micBtnB.classList.toggle("listening",simulOn&&activeBtn===micBtnB);
+  simulBtn.classList.toggle("on",simulOn&&!forcedSrc);
+  $("simulSub").textContent=simulOn&&!forcedSrc?"LISTENING — tap to stop":"tap to start — hears both languages";
 }
-function startUI(){listening=true;listeningStoppedManually=false;if(activeBtn)activeBtn.classList.add("listening");setStatus("Listening ("+LANG[activeSrc].label+")…",true);}
-function stopUI(){listening=false;micBtn.classList.remove("listening");micBtnB.classList.remove("listening");setStatus("Ready");}
-function setConvo(on){convoMode=on;convoBtn.textContent="🗣 Conversation: "+(on?"ON":"OFF");convoBtn.classList.toggle("on",on);}
-function toggleMic(btn,src,dst){
-  if(simulOn)stopSimul();
-  if(listening){const same=activeBtn===btn;listeningStoppedManually=true;try{rec&&rec.stop();}catch(e){}stopUI();fetchExtras();setTimeout(pushTurnToHistory,300);if(same)return;}
-  activeBtn=btn;activeSrc=src;activeDst=dst;startListening();
+async function startEngine(src,dst,btn){
+  if(simulOn)stopSimul(true);
+  forcedSrc=src;forcedDst=dst;activeBtn=btn;
+  await startSimulEngine();
+  refreshMicUI();
 }
-micBtn.onclick=()=>toggleMic(micBtn,srcSel.value,dstSel.value);
-micBtnB.onclick=()=>toggleMic(micBtnB,dstSel.value,srcSel.value);
-convoBtn.onclick=()=>{
-  if(simulOn)stopSimul();
-  setConvo(!convoMode);
-  if(convoMode&&!listening){activeBtn=micBtn;activeSrc=srcSel.value;activeDst=dstSel.value;startListening();}
-  if(!convoMode&&listening){listeningStoppedManually=true;try{rec&&rec.stop();}catch(e){}stopUI();}
-};
-function pushTurnToHistory(){if(!sessionSourceText||!translatedSoFar)return;lastTurnEl=pushTurn(activeBtn===micBtnB?"b":"a",sessionSourceText,translatedSoFar,"",activeSrc);}
-
-function enqueueChunk(chunk){pendingQueue.push(chunk);processQueue();if(extrasTimer)clearTimeout(extrasTimer);extrasTimer=setTimeout(fetchExtras,1500);}
-async function processQueue(){if(translating)return;translating=true;while(pendingQueue.length){await translateChunk(pendingQueue.splice(0).join(" "));}translating=false;}
-async function translateChunk(text){
-  setStatus("Translating…",true);
-  try{
-    const base=translatedSoFar;
-    outText.classList.remove("placeholder");outText.dir=activeDst==="he"?"rtl":"ltr";
-    const out=await translate(text,activeSrc,activeDst,partial=>{outText.textContent=base+(base?" ":"")+partial;});
-    if(!out)throw new Error("empty response");
-    translatedSoFar=base+(base?" ":"")+out;
-    outText.textContent=translatedSoFar;
-    setStatus(listening?"Listening ("+LANG[activeSrc].label+")…":"Done",listening);
-    if(autoSpeak)speak(out,activeDst);
-  }catch(e){showErr("Translation failed — "+(e.message||"connection error"));setStatus("Ready");translationFailed=true;}
-}
-async function fetchExtras(){
-  const jaText=activeDst==="ja"?translatedSoFar:(activeSrc==="ja"?sessionSourceText:"");
-  if(!jaText)return;
-  const meaningLang=activeSrc==="ja"?LANG[activeDst].name:LANG[activeSrc].name;
-  // romaji and suggestions in PARALLEL
-  const [ro,reps]=await Promise.all([romaji(jaText).catch(()=>""),suggestions(jaText,meaningLang).catch(()=>[])]);
-  if(ro){outRomaji.textContent=ro;if(lastTurnEl){const el=lastTurnEl.querySelector(".ro");if(el&&!el.textContent)el.textContent=ro;}}
-  addSuggestionSet(reps,jaText,meaningLang==="Hebrew"?"rtl":"ltr");
-}
+micBtn.onclick=()=>{ if(simulOn&&activeBtn===micBtn){stopSimul();return;} startEngine(srcSel.value,dstSel.value,micBtn); };
+micBtnB.onclick=()=>{ if(simulOn&&activeBtn===micBtnB){stopSimul();return;} startEngine(dstSel.value,srcSel.value,micBtnB); };
 
 /* ================= SIMULTANEOUS (fast pipeline: PCM ring buffer + pre-roll VAD + WAV) ================= */
 let simulOn=false,simulStream=null,audioCtx=null,procNode=null,srcNode=null;
@@ -363,10 +306,13 @@ let pcmPre=[],pcmSeg=[],preSamples=0,inSpeech=false,speechStart=0,lastLoud=0,noi
 const PRE_MS=400,SILENCE_MS=500,MAX_MS=10000,MIN_MS=300;
 
 simulBtn.onclick=async()=>{
-  if(simulOn){stopSimul();return;}
+  if(simulOn&&!forcedSrc){stopSimul();return;}
+  if(simulOn)stopSimul(true);
+  forcedSrc=null;forcedDst=null;activeBtn=null;
+  await startSimulEngine();refreshMicUI();
+};
+async function startSimulEngine(){
   clearErr();if(!keyCheck())return;
-  if(listening){listeningStoppedManually=true;try{rec&&rec.stop();}catch(e){}stopUI();}
-  setConvo(false);
   try{simulStream=await navigator.mediaDevices.getUserMedia({audio:{echoCancellation:true,noiseSuppression:true,autoGainControl:true,channelCount:1}});}
   catch(e){showErr("Mic permission denied.");return;}
   audioCtx=new (window.AudioContext||window.webkitAudioContext)();
@@ -375,15 +321,17 @@ simulBtn.onclick=async()=>{
   pcmPre=[];pcmSeg=[];preSamples=0;inSpeech=false;noiseFloor=0.004;
   procNode.onaudioprocess=onAudio;
   srcNode.connect(procNode);procNode.connect(audioCtx.destination);
-  simulOn=true;simulBtn.textContent="⚡ Simultaneous: ON";simulBtn.classList.add("on");
-  setStatus("Simultaneous — listening to both languages…",true);histBox.style.display="";
-};
-function stopSimul(){
+  simulOn=true;
+  setStatus(forcedSrc?"Listening ("+LANG[forcedSrc].label+" → "+LANG[forcedDst].label+")…":"Simultaneous — listening to both languages…",true);
+  histBox.style.display="";
+}
+function stopSimul(silent){
   simulOn=false;
   try{procNode&&procNode.disconnect();srcNode&&srcNode.disconnect();}catch(e){}
   if(simulStream){simulStream.getTracks().forEach(t=>t.stop());simulStream=null;}
   if(audioCtx){audioCtx.close();audioCtx=null;}
-  simulBtn.textContent="⚡ Simultaneous: OFF";simulBtn.classList.remove("on");setStatus("Ready");
+  forcedSrc=null;forcedDst=null;activeBtn=null;
+  refreshMicUI();if(!silent)setStatus("Ready");
 }
 function downsample(f32,fromSr){
   if(fromSr===TARGET_SR)return f32;
@@ -411,8 +359,8 @@ function onAudio(e){
     if(rms>thresh)lastLoud=now;
     const dur=now-speechStart;
     if(now-lastLoud>SILENCE_MS||dur>MAX_MS){
-      const seg=pcmSeg;pcmSeg=[];inSpeech=false;setStatus("Simultaneous — listening to both languages…",true);
-      if(dur-(now-lastLoud)>=MIN_MS){const blob=wavBlob(seg,TARGET_SR);processSegment(blob);}
+      const seg=pcmSeg;pcmSeg=[];inSpeech=false;setStatus(forcedSrc?"Listening ("+LANG[forcedSrc].label+")…":"Simultaneous — listening to both languages…",true);
+      if(dur-(now-lastLoud)>=MIN_MS){const blob=wavBlob(seg,TARGET_SR);processSegment(blob,forcedSrc,forcedDst);}
     }
   }
 }
@@ -426,35 +374,39 @@ function wavBlob(chunks,sr){
   return new Blob([buf],{type:"audio/wav"});
 }
 const JUNK=["thank you","thanks for watching","ご視聴ありがとうございました","字幕","subtitles","subscribe"];
-async function transcribe(blob){
+async function transcribe(blob,lang){
   const fd=new FormData();fd.append("file",blob,"seg.wav");fd.append("model","gpt-4o-mini-transcribe");
+  if(lang)fd.append("language",lang);
   fd.append("prompt","Conversation mixing Japanese, English and Hebrew. Some speakers have a foreign accent. Write Japanese in Japanese script. If there is no clear speech, return nothing.");
   const wr=await fetch("https://api.openai.com/v1/audio/transcriptions",{method:"POST",headers:{"Authorization":"Bearer "+key()},body:fd});
   if(!wr.ok){const t=await wr.text().catch(()=>"");throw new Error("API "+wr.status+(t?": "+t.slice(0,120):""));}
   addSpend(((blob.size-44)/(TARGET_SR*2))/60*PRICE.stt_min);
   return ((await wr.json()).text||"").trim();
 }
-async function processSegment(blob){
+async function processSegment(blob,fSrc,fDst){
   const el=pushTurn("a","…","…","","…"); // placeholder keeps spoken order
   el.querySelector(".who").textContent="🗣 …";
   try{
-    const text=await transcribe(blob);
+    const text=await transcribe(blob,fSrc||null);
     const tl=(text||"").toLowerCase().replace(/[。、.!?！？\s]+$/,"");
     if(!text||text.length<2||JUNK.some(j=>tl===j)){el.remove();return;}
-    const segSrc=JA_RE.test(text)?"ja":HE_RE.test(text)?"he":"en";
-    const segDst=segSrc==="en"?"ja":"en";
+    const segSrc=fSrc||(JA_RE.test(text)?"ja":HE_RE.test(text)?"he":"en");
+    const segDst=fDst||(segSrc==="en"?"ja":"en");
+    inText.classList.remove("placeholder");inText.textContent=text;inText.dir=segSrc==="he"?"rtl":"ltr";
+    outText.classList.remove("placeholder");outText.textContent="…";outRomaji.textContent="";
     el.className="turn "+(segSrc==="en"?"a":"b");
     el.querySelector(".who").textContent="🗣 "+LANG[segSrc].label;
     el.querySelector(".src").textContent=text;
     // PARALLEL: translation, romaji (of the Japanese side), suggestions (if Japanese was spoken)
     const jaInput=segSrc==="ja";
     const dstEl=el.querySelector(".dst");
-    const pTrans=translate(text,segSrc,segDst,partial=>{dstEl.textContent=partial;});
+    const pTrans=translate(text,segSrc,segDst,partial=>{dstEl.textContent=partial;outText.textContent=partial;outText.dir=segDst==="he"?"rtl":"ltr";});
     const pRo=jaInput?romaji(text):pTrans.then(t=>romaji(t));
-    const pSug=jaInput?suggestions(text,"English"):Promise.resolve([]);
+    const pSug=jaInput?suggestions(text,(fDst==="he")?"Hebrew":"English"):Promise.resolve([]);
     pTrans.then(t=>{el.querySelector(".dst").textContent=t;if(autoSpeak)speak(t,segDst);}).catch(e=>{el.querySelector(".dst").textContent="(translation failed)";showErr("Translation error — "+(e.message||""));});
-    pRo.then(r=>{el.querySelector(".ro").textContent=r||"";}).catch(()=>{});
-    pSug.then(reps=>addSuggestionSet(reps,text,"ltr")).catch(()=>{});
+    pRo.then(r=>{el.querySelector(".ro").textContent=r||"";outRomaji.textContent=r||"";}).catch(()=>{});
+    const meaningLang=(segSrc==="he"||segDst==="he")?"Hebrew":"English";
+    pSug.then(reps=>addSuggestionSet(reps,text,meaningLang==="Hebrew"?"rtl":"ltr")).catch(()=>{});
   }catch(e){el.remove();showErr("Simultaneous error: "+(e.message||"unknown"));}
 }
 
@@ -472,12 +424,13 @@ async function initOcr(){
 }
 $("camBtn").onclick=async()=>{
   clearErr();if(!keyCheck())return;
-  if(listening){listeningStoppedManually=true;try{rec&&rec.stop();}catch(e){}stopUI();}
+  if(camStream){$("camStop").onclick();return;}
+  if(simulOn)stopSimul();
   try{camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"},audio:false});}catch(e){showErr("Camera permission denied or unavailable.");return;}
-  camVideo.srcObject=camStream;camBox.style.display="";camOverlay.innerHTML="";camScanCount=0;frozen=false;lastFrameSig=null;
+  camVideo.srcObject=camStream;camBox.style.display="";camOverlay.innerHTML="";camScanCount=0;frozen=false;lastFrameSig=null;$("camBtn").classList.add("on");
   initOcr();camTimer=setInterval(camScan,3000);
 };
-$("camStop").onclick=()=>{clearInterval(camTimer);camTimer=null;if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;}camBox.style.display="none";camOverlay.innerHTML="";};
+$("camStop").onclick=()=>{clearInterval(camTimer);camTimer=null;if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;}camBox.style.display="none";camOverlay.innerHTML="";$("camBtn").classList.remove("on");};
 function frameSignature(cw,ch,cx,cy){const t=document.createElement("canvas");t.width=16;t.height=16;const g=t.getContext("2d");g.drawImage(camVideo,cx,cy,cw,ch,0,0,16,16);const d=g.getImageData(0,0,16,16).data;const sig=new Array(256);for(let i=0;i<256;i++)sig[i]=(d[i*4]*0.299+d[i*4+1]*0.587+d[i*4+2]*0.114)|0;return sig;}
 function frameDiff(a,b){if(!a||!b)return 1;let s=0;for(let i=0;i<256;i++)s+=Math.abs(a[i]-b[i]);return s/(256*255);}
 function placeBox(en,x,y,bw,bh,bg,fg){
