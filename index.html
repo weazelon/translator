@@ -24,7 +24,8 @@
   .label{font-size:.78rem;color:var(--muted);font-weight:700}
   .text{font-size:1.15rem;line-height:1.45;word-break:break-word}
   .text.placeholder{color:var(--muted);opacity:.7}
-  .romaji{font-size:.95rem;color:var(--muted);font-style:italic;direction:ltr;text-align:left}
+  .romaji{font-size:.95rem;color:#e0b400;font-style:italic;font-weight:600;direction:ltr;text-align:left}
+  body.dark .romaji{color:#ffd54a}
   #histBox{max-height:38vh}
   #histList{overflow-y:auto;flex:1;min-height:0;padding-inline-end:4px}
   .turn{border-inline-start:3px solid var(--line);padding:6px 10px;margin-bottom:8px}
@@ -33,7 +34,10 @@
   .turn.a .who{color:var(--accent)} .turn.b .who{color:var(--purple-soft)}
   .turn .dst{font-size:1.08rem;font-weight:600}
   .turn .src{font-size:.9rem;color:var(--muted)}
-  .turn .ro{font-size:.88rem;color:var(--muted);font-style:italic}
+  .turn.b .src{font-size:1.08rem;font-weight:600;color:var(--ink)}
+  .turn.b .dst{font-size:.95rem;color:var(--muted);font-weight:500}
+  .turn .ro{font-size:.92rem;color:#e0b400;font-style:italic;font-weight:600}
+  body.dark .turn .ro{color:#ffd54a}
   #outBox{border-color:var(--accent);border-width:2px} #outBox .label{color:var(--accent)}
   #inBox{max-height:16vh} #inText{overflow-y:auto}
   #repliesBox{border-color:var(--ok);border-width:2px;max-height:34vh} #repliesBox .label{color:var(--ok)}
@@ -76,7 +80,7 @@
 <div class="popup-wrap" id="popups"></div>
 <div class="app">
   <header>
-    <h1>Live Translator <small>v31</small></h1>
+    <h1>Live Translator <small>v32</small></h1>
     <div class="right"><button class="theme" id="themeBtn">🌙</button><div class="status" id="status">Ready</div></div>
   </header>
 
@@ -247,7 +251,10 @@ async function suggestions(ja,meaningLang){
 function pushTurn(cls,srcText,dstText,ro,srcLangCode){
   histBox.style.display="";
   const d=document.createElement("div");d.className="turn "+cls;
-  d.innerHTML='<div class="who">🗣 '+esc(LANG[srcLangCode]?LANG[srcLangCode].label:srcLangCode)+'</div><div class="dst">'+esc(dstText)+'</div><div class="src">'+esc(srcText)+'</div><div class="ro">'+esc(ro||"")+'</div>';
+  const who='<div class="who">🗣 '+esc(LANG[srcLangCode]?LANG[srcLangCode].label:srcLangCode)+'</div>';
+  const src='<div class="src">'+esc(srcText)+'</div>', dst='<div class="dst">'+esc(dstText)+'</div>', roEl='<div class="ro">'+esc(ro||"")+'</div>';
+  // Japanese first, romaji right under it, then the other language
+  d.innerHTML = srcLangCode==="ja" ? who+src+roEl+dst : who+dst+roEl+src;
   histList.prepend(d);histList.scrollTop=0;return d;
 }
 function addSuggestionSet(replies,forText,dir){
@@ -397,6 +404,10 @@ async function processSegment(blob,fSrc,fDst){
     el.className="turn "+(segSrc==="en"?"a":"b");
     el.querySelector(".who").textContent="🗣 "+LANG[segSrc].label;
     el.querySelector(".src").textContent=text;
+    if(segSrc==="ja"){ // Japanese spoken: Japanese → romaji → translation
+      const w=el.querySelector(".who"),sr=el.querySelector(".src"),ro=el.querySelector(".ro"),ds=el.querySelector(".dst");
+      el.append(w,sr,ro,ds);
+    }
     // PARALLEL: translation, romaji (of the Japanese side), suggestions (if Japanese was spoken)
     const jaInput=segSrc==="ja";
     const dstEl=el.querySelector(".dst");
