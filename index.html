@@ -62,6 +62,18 @@
   .big-cam.on{outline:3px solid var(--ok)}
   .side{border:1.5px solid var(--line);background:var(--panel);border-radius:12px;padding:9px 12px;cursor:pointer;font-size:.85rem;font-weight:700;color:var(--ink)}
   .side.on{border-color:var(--ok);color:var(--ok)}
+  #lens{position:fixed;inset:0;z-index:500;background:#000;overflow:hidden}
+  #lensVideo{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform-origin:center center}
+  #lensOverlay{position:absolute;inset:0;pointer-events:none;will-change:transform}
+  .lensTop{position:absolute;top:0;left:0;right:0;padding:max(10px,env(safe-area-inset-top)) 10px 10px;display:flex;align-items:center;gap:10px;background:linear-gradient(rgba(0,0,0,.55),transparent)}
+  .lensBottom{position:absolute;bottom:0;left:0;right:0;padding:12px 14px max(14px,env(safe-area-inset-bottom));display:flex;align-items:center;gap:10px;background:linear-gradient(transparent,rgba(0,0,0,.6))}
+  .lensBtn{border:none;border-radius:999px;background:rgba(255,255,255,.18);color:#fff;font-weight:800;padding:10px 14px;font-size:1rem;backdrop-filter:blur(6px)}
+  .lensBtn.on{background:var(--ok);color:#fff}
+  .lensStatus{flex:1;color:#fff;font-size:.85rem;font-weight:700;text-shadow:0 1px 3px #000;text-align:center}
+  .lensLbl{color:#fff;font-weight:800;font-size:.9rem}
+  #lensZoom{flex:1}
+  .lensBox{position:absolute;display:flex;align-items:center;justify-content:center;text-align:center;font-weight:800;line-height:1.05;overflow:hidden;border-radius:4px;padding:1px 4px;box-shadow:0 0 0 1px rgba(0,0,0,.15);animation:lensIn .18s}
+  @keyframes lensIn{from{opacity:0;transform:scale(.96)}to{opacity:1;transform:none}}
   .pill{margin-inline-start:8px;border:none;border-radius:999px;background:var(--live);color:#fff;font-size:.72rem;font-weight:800;padding:2px 9px;cursor:pointer;vertical-align:middle}
   .hint{text-align:center;font-size:.8rem;color:var(--muted)}
   .err{display:none;background:var(--err-bg);border:1px solid var(--err-line);color:var(--err-ink);border-radius:12px;padding:10px 12px;font-size:.88rem} .err.show{display:block}
@@ -78,9 +90,22 @@
 </head>
 <body>
 <div class="popup-wrap" id="popups"></div>
+<div id="lens" style="display:none">
+  <video id="lensVideo" autoplay playsinline muted></video>
+  <div id="lensOverlay"></div>
+  <div class="lensTop">
+    <button class="lensBtn" id="lensClose">✕</button>
+    <div class="lensStatus" id="lensStatus">Point at Japanese text</div>
+    <button class="lensBtn" id="lensHQ" title="Higher quality (slower)">HQ</button>
+  </div>
+  <div class="lensBottom">
+    <span class="lensLbl">🔍</span><input type="range" id="lensZoom" min="1" max="3" step="0.1" value="1"><span class="lensLbl" id="lensZoomVal">1.0×</span>
+    <button class="lensBtn" id="lensFreeze">⏸ Hold</button>
+  </div>
+</div>
 <div class="app">
   <header>
-    <h1>Live Translator <small>v40</small></h1>
+    <h1>Live Translator <small>v41</small></h1>
     <div class="right"><button class="theme" id="themeBtn">🌙</button><div class="status" id="status">Ready</div></div>
   </header>
 
@@ -115,16 +140,6 @@
     </div>
   </div>
 
-  <div class="box" id="camBox" style="display:none">
-    <div class="label">Camera translate — point at Japanese text</div>
-    <div id="camWrap" style="position:relative;width:100%;border-radius:10px;overflow:hidden;background:#000">
-      <video id="camVideo" autoplay playsinline muted style="width:100%;display:block"></video>
-      <div id="camOverlay" style="position:absolute;inset:0;pointer-events:none"></div>
-    </div>
-    <div style="display:flex;gap:10px;align-items:center;margin-top:6px"><span class="label">🔍 Zoom</span><input type="range" id="camZoom" min="1" max="3" step="0.1" value="1" style="flex:1"><span class="label" id="camZoomVal">1.0×</span></div>
-    <div class="hint" id="camStatus" style="text-align:start"></div>
-    <div class="controls" style="margin-top:6px"><button class="side" id="camStop">✖ Stop camera</button></div>
-  </div>
 
   <div class="err" id="err"></div>
 
@@ -540,175 +555,145 @@ async function processSegment(blob,fSrc,fDst){
   }catch(e){el.remove();showErr("Simultaneous error: "+(e.message||"unknown"));}
 }
 
-/* ================= CAMERA v2: OCR/vision + Lens-style patches + motion tracking ================= */
-const camBox=$("camBox"),camVideo=$("camVideo"),camOverlay=$("camOverlay"),camStatus=$("camStatus"),camZoomEl=$("camZoom");
-let camStream=null,camTimer=null,camBusy=false,camScanCount=0,camZoomF=1,ocrWorker=null,ocrReady=false,ocrLoading=false;
-let lockRef=null,locked=false,trackRAF=null,lastTrackT=0,lockDx=0,lockDy=0,lostFrames=0,needRescan=true;
-const camCache={};
-const TW=64,TH=48; // tracking resolution
+/* ================= LENS (fullscreen camera translate, vision-only, streaming) ================= */
+const lens=$("lens"),lv=$("lensVideo"),lo=$("lensOverlay"),lstat=$("lensStatus"),lzoom=$("lensZoom");
+let lensStream=null,lensOn=false,lensBusy=false,lensZoomF=1,lensHQ=false,lensHold=false;
+let lref=null,llocked=false,lRAF=null,lLastT=0,lLost=0,jitter=10,lTimer=null,staleN=0;
+const TW=64,TH=48;
 
-camZoomEl.addEventListener("input",()=>{camZoomF=parseFloat(camZoomEl.value)||1;$("camZoomVal").textContent=camZoomF.toFixed(1)+"×";camVideo.style.transform="scale("+camZoomF+")";camVideo.style.transformOrigin="center center";unlock();});
-function loadScript(src){return new Promise((res,rej)=>{const t=document.createElement("script");t.src=src;t.onload=res;t.onerror=()=>rej(new Error("failed to load "+src));document.head.appendChild(t);});}
-async function initOcr(){
-  if(ocrReady||ocrLoading)return;ocrLoading=true;camStatus.textContent="Loading text-recognition engine (first time only, ~15 MB)…";
-  try{await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js");ocrWorker=await Tesseract.createWorker("jpn");await ocrWorker.setParameters({tessedit_pageseg_mode:"11"});ocrReady=true;camStatus.textContent="Text engine ready.";}
-  catch(e){camStatus.textContent="Could not load OCR engine: "+(e.message||"")+" — check internet.";}
-  ocrLoading=false;
-}
 $("camBtn").onclick=async()=>{
   clearErr();if(!keyCheck())return;
-  if(camStream){$("camStop").onclick();return;}
   if(simulOn)stopSimul();
-  try{camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment",width:{ideal:1280}},audio:false});}catch(e){showErr("Camera permission denied or unavailable.");return;}
-  camVideo.srcObject=camStream;camBox.style.display="";camOverlay.innerHTML="";camScanCount=0;unlock();$("camBtn").classList.add("on");
-  initOcr();camTimer=setInterval(camScan,1000);trackLoop();
+  try{lensStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment",width:{ideal:1280},height:{ideal:720}},audio:false});}
+  catch(e){showErr("Camera permission denied or unavailable.");return;}
+  lv.srcObject=lensStream;lens.style.display="";document.body.style.overflow="hidden";lensOn=true;llocked=false;lo.innerHTML="";
+  lstat.textContent="Point at Japanese text";
+  lTimer=setInterval(lensScan,900);lTrack();
+  setTimeout(lensScan,400);
 };
-$("camStop").onclick=()=>{clearInterval(camTimer);camTimer=null;if(trackRAF)cancelAnimationFrame(trackRAF);trackRAF=null;if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;}camBox.style.display="none";camOverlay.innerHTML="";$("camBtn").classList.remove("on");};
+function lensStop(){
+  lensOn=false;clearInterval(lTimer);if(lRAF)cancelAnimationFrame(lRAF);lRAF=null;
+  if(lensStream){lensStream.getTracks().forEach(t=>t.stop());lensStream=null;}
+  lens.style.display="none";document.body.style.overflow="";lo.innerHTML="";
+}
+$("lensClose").onclick=lensStop;
+$("lensHQ").onclick=()=>{lensHQ=!lensHQ;$("lensHQ").classList.toggle("on",lensHQ);lensUnlock(true);};
+$("lensFreeze").onclick=()=>{lensHold=!lensHold;$("lensFreeze").textContent=lensHold?"▶ Resume":"⏸ Hold";$("lensFreeze").classList.toggle("on",lensHold);if(!lensHold)lensUnlock(true);};
+lzoom.oninput=()=>{lensZoomF=parseFloat(lzoom.value)||1;$("lensZoomVal").textContent=lensZoomF.toFixed(1)+"×";lv.style.transform="scale("+lensZoomF+")";lensUnlock(true);};
+lo.parentElement.addEventListener("click",e=>{if(e.target===lv||e.target===lo){$("lensFreeze").onclick();}});
 
-function crop(){const w=camVideo.videoWidth,h=camVideo.videoHeight;const cw=w/camZoomF,ch=h/camZoomF;return{w,h,cw,ch,cx:(w-cw)/2,cy:(h-ch)/2};}
+// visible region of the video (object-fit: cover + zoom) in video pixels
+function visRect(){
+  const vw=lv.videoWidth,vh=lv.videoHeight,cw=lens.clientWidth,ch=lens.clientHeight;
+  if(!vw||!cw)return null;
+  const s=Math.max(cw/vw,ch/vh);           // cover scale
+  let w=cw/s,h=ch/s;                        // visible video px before zoom
+  w/=lensZoomF;h/=lensZoomF;
+  return{x:(vw-w)/2,y:(vh-h)/2,w,h};
+}
 function grayFrame(){
-  const c=crop();if(!c.w)return null;
+  const r=visRect();if(!r)return null;
   const t=document.createElement("canvas");t.width=TW;t.height=TH;const g=t.getContext("2d");
-  g.drawImage(camVideo,c.cx,c.cy,c.cw,c.ch,0,0,TW,TH);
-  const d=g.getImageData(0,0,TW,TH).data,out=new Float32Array(TW*TH);let mean=0;
-  for(let i=0;i<TW*TH;i++){out[i]=d[i*4]*0.299+d[i*4+1]*0.587+d[i*4+2]*0.114;mean+=out[i];}
-  mean/=TW*TH;for(let i=0;i<TW*TH;i++)out[i]-=mean; // brightness-invariant
-  return out;
+  g.drawImage(lv,r.x,r.y,r.w,r.h,0,0,TW,TH);
+  const d=g.getImageData(0,0,TW,TH).data,out=new Float32Array(TW*TH);let m=0;
+  for(let i=0;i<TW*TH;i++){out[i]=d[i*4]*0.299+d[i*4+1]*0.587+d[i*4+2]*0.114;m+=out[i];}
+  m/=TW*TH;for(let i=0;i<TW*TH;i++)out[i]-=m;return out;
 }
-function sad(a,b,dx,dy){ // sum abs diff of overlap, normalized per pixel
-  let s=0,n=0;
-  const x0=Math.max(0,dx),x1=Math.min(TW,TW+dx),y0=Math.max(0,dy),y1=Math.min(TH,TH+dy);
-  for(let y=y0;y<y1;y++){const ra=y*TW,rb=(y-dy)*TW;for(let x=x0;x<x1;x++){s+=Math.abs(a[ra+x]-b[rb+x-dx]);n++;}}
-  return n?s/n:1e9;
-}
-function estimateShift(ref,cur){ // returns {dx,dy,score} in tracking px; coarse-to-fine search
-  let best={dx:0,dy:0,v:1e9};
-  for(let dy=-10;dy<=10;dy+=2)for(let dx=-12;dx<=12;dx+=2){const v=sad(cur,ref,dx,dy);if(v<best.v)best={dx,dy,v};}
-  const c=best;for(let dy=c.dy-1;dy<=c.dy+1;dy++)for(let dx=c.dx-1;dx<=c.dx+1;dx++){const v=sad(cur,ref,dx,dy);if(v<best.v)best={dx,dy,v};}
-  return best;
-}
-let pendingRescan=false,scanGen=0,lastRefGray=null,jitterBase=12,staleStreak=0;
-function changeThresh(){return Math.max(26,jitterBase*2.6);}
-function stale(){
-  if(staleStreak>=2)return false;              // never loop forever: after 2 discards, accept the result
-  const cur=grayFrame();if(!cur||!lastRefGray)return false;
-  return estimateShift(lastRefGray,cur).v>changeThresh();
-}
-function unlock(clear){locked=false;lockRef=null;lockDx=lockDy=0;lostFrames=0;needRescan=true;camOverlay.style.transform="";if(clear){camOverlay.innerHTML="";}}
-function trackLoop(){
-  trackRAF=requestAnimationFrame(trackLoop);
-  const now=performance.now();if(now-lastTrackT<66)return;lastTrackT=now; // ~15 fps
-  if(!camStream||!locked||!lockRef)return;
+function sad(a,b,dx,dy){let s=0,n=0;const x0=Math.max(0,dx),x1=Math.min(TW,TW+dx),y0=Math.max(0,dy),y1=Math.min(TH,TH+dy);for(let y=y0;y<y1;y++){const ra=y*TW,rb=(y-dy)*TW;for(let x=x0;x<x1;x++){s+=Math.abs(a[ra+x]-b[rb+x-dx]);n++;}}return n?s/n:1e9;}
+function shift(ref,cur){let b={dx:0,dy:0,v:1e9};for(let dy=-10;dy<=10;dy+=2)for(let dx=-12;dx<=12;dx+=2){const v=sad(cur,ref,dx,dy);if(v<b.v)b={dx,dy,v};}const c=b;for(let dy=c.dy-1;dy<=c.dy+1;dy++)for(let dx=c.dx-1;dx<=c.dx+1;dx++){const v=sad(cur,ref,dx,dy);if(v<b.v)b={dx,dy,v};}return b;}
+const changeThr=()=>Math.max(24,jitter*2.6);
+function lensUnlock(clear){llocked=false;lref=null;lLost=0;lo.style.transform="";if(clear)lo.innerHTML="";}
+function lTrack(){
+  lRAF=requestAnimationFrame(lTrack);
+  const now=performance.now();if(now-lLastT<66)return;lLastT=now;
+  if(!lensOn||!llocked||!lref||lensHold)return;
   const cur=grayFrame();if(!cur)return;
-  const m=estimateShift(lockRef,cur);
-  // score: how well the aligned frames match (0 = identical)
-  if(m.v>changeThresh()){lostFrames++;if(lostFrames>3){unlock(true);camStatus.textContent="Scene changed — rescanning…";camScan();}return;}
-  lostFrames=0;lockDx=m.dx;lockDy=m.dy;
-  const W=camVideo.clientWidth,H=camVideo.clientHeight;
-  camOverlay.style.transform="translate("+(m.dx/TW*W)+"px,"+(m.dy/TH*H)+"px)";
-  // if drifted near the search edge, re-lock so tracking never saturates
-  if(Math.abs(m.dx)>=10||Math.abs(m.dy)>=8){unlock(false);camScan();}
+  const m=shift(lref,cur);
+  if(m.v>changeThr()){lLost++;if(lLost>3){lensUnlock(true);lstat.textContent="Rescanning…";lensScan();}return;}
+  lLost=0;
+  lo.style.transform="translate("+(m.dx/TW*lens.clientWidth)+"px,"+(m.dy/TH*lens.clientHeight)+"px)";
+  if(Math.abs(m.dx)>=10||Math.abs(m.dy)>=8){lensUnlock(false);lensScan();}
 }
 
-/* ---- colors: separate background vs text color inside a box (2-cluster on luminance) ---- */
+// colors: background vs text (2 clusters)
 function boxColors(g,x0,y0,x1,y1,W,H){
   x0=Math.max(0,x0|0);y0=Math.max(0,y0|0);x1=Math.min(W,x1|0);y1=Math.min(H,y1|0);
   if(x1-x0<2||y1-y0<2)return{bg:"rgb(235,235,235)",fg:"#111"};
-  const d=g.getImageData(x0,y0,x1-x0,y1-y0).data,n=d.length/4;
-  const lum=new Float32Array(n);let lo=255,hi=0;
-  for(let i=0;i<n;i++){const l=d[i*4]*0.299+d[i*4+1]*0.587+d[i*4+2]*0.114;lum[i]=l;if(l<lo)lo=l;if(l>hi)hi=l;}
-  const thr=(lo+hi)/2; // simple split; refine once (2-means)
-  let t=thr;for(let it=0;it<3;it++){let sa=0,na=0,sb=0,nb=0;for(let i=0;i<n;i++){if(lum[i]<t){sa+=lum[i];na++;}else{sb+=lum[i];nb++;}}if(!na||!nb)break;t=(sa/na+sb/nb)/2;}
-  let A=[0,0,0,0],B=[0,0,0,0];
-  for(let i=0;i<n;i++){const k=lum[i]<t?A:B;k[0]+=d[i*4];k[1]+=d[i*4+1];k[2]+=d[i*4+2];k[3]++;}
+  const d=g.getImageData(x0,y0,x1-x0,y1-y0).data,n=d.length/4,lum=new Float32Array(n);let lo_=255,hi=0;
+  for(let i=0;i<n;i++){const l=d[i*4]*0.299+d[i*4+1]*0.587+d[i*4+2]*0.114;lum[i]=l;if(l<lo_)lo_=l;if(l>hi)hi=l;}
+  let t=(lo_+hi)/2;for(let it=0;it<3;it++){let sa=0,na=0,sb=0,nb=0;for(let i=0;i<n;i++){if(lum[i]<t){sa+=lum[i];na++;}else{sb+=lum[i];nb++;}}if(!na||!nb)break;t=(sa/na+sb/nb)/2;}
+  const A=[0,0,0,0],B=[0,0,0,0];for(let i=0;i<n;i++){const k=lum[i]<t?A:B;k[0]+=d[i*4];k[1]+=d[i*4+1];k[2]+=d[i*4+2];k[3]++;}
   const big=A[3]>=B[3]?A:B,small=A[3]>=B[3]?B:A;
-  const rgb=k=>k[3]?"rgb("+Math.round(k[0]/k[3])+","+Math.round(k[1]/k[3])+","+Math.round(k[2]/k[3])+")":"rgb(235,235,235)";
-  const bg=rgb(big);
-  let fg=small[3]>n*0.04?rgb(small):null; // real text cluster exists
-  if(!fg){const l=big[3]?(big[0]*0.299+big[1]*0.587+big[2]*0.114)/big[3]:200;fg=l>140?"#111":"#fff";}
+  const rgb=k=>"rgb("+Math.round(k[0]/k[3])+","+Math.round(k[1]/k[3])+","+Math.round(k[2]/k[3])+")";
+  const bg=rgb(big);let fg=small[3]>n*0.04?rgb(small):null;
+  if(!fg){const l=(big[0]*0.299+big[1]*0.587+big[2]*0.114)/big[3];fg=l>140?"#111":"#fff";}
   return{bg,fg};
 }
-function placeBox(en,xPct,yPct,wPct,hPct,bg,fg){
-  const d=document.createElement("div");
-  const vertical=hPct>wPct*1.6&&en.length>3;
-  d.style.cssText="position:absolute;left:"+xPct+"%;top:"+yPct+"%;width:"+wPct+"%;height:"+hPct+"%;background:"+bg+";color:"+fg+";display:flex;align-items:center;justify-content:center;text-align:center;font-weight:800;line-height:1.05;overflow:hidden;border-radius:3px;padding:1px 3px;"+(vertical?"writing-mode:vertical-rl;":"white-space:normal;");
-  d.textContent=en;camOverlay.appendChild(d);
-  requestAnimationFrame(()=>{ // fit: binary search font size, wrapping allowed
-    let lo=7,hi=Math.max(9,(vertical?d.clientWidth:d.clientHeight)*0.8),best=lo;
-    for(let k=0;k<7;k++){const mid=(lo+hi)/2;d.style.fontSize=mid+"px";if(d.scrollWidth<=d.clientWidth+1&&d.scrollHeight<=d.clientHeight+1){best=mid;lo=mid;}else hi=mid;}
-    d.style.fontSize=best+"px";
-  });
+function placeBox(en,x,y,w,h,bg,fg){
+  const d=document.createElement("div");d.className="lensBox";
+  const vertical=h>w*1.6&&en.length>3;
+  d.style.cssText="left:"+x+"%;top:"+y+"%;width:"+w+"%;height:"+h+"%;background:"+bg+";color:"+fg+";"+(vertical?"writing-mode:vertical-rl;":"white-space:normal;");
+  d.textContent=en;lo.appendChild(d);
+  requestAnimationFrame(()=>{let a=7,b=Math.max(9,(vertical?d.clientWidth:d.clientHeight)*0.8),best=a;for(let k=0;k<7;k++){const m=(a+b)/2;d.style.fontSize=m+"px";if(d.scrollWidth<=d.clientWidth+1&&d.scrollHeight<=d.clientHeight+1){best=m;a=m;}else b=m;}d.style.fontSize=best+"px";});
 }
 
-async function camScan(){
-  if(!camStream||!ocrReady)return;
-  if(camBusy){pendingRescan=true;return;}
-  if(locked&&!needRescan)return;
-  const c=crop();if(!c.w)return;
-  camBusy=true;camScanCount++;camStatus.textContent="Scanning… ("+camScanCount+")";
-  const myGen=++scanGen;
-  try{
-    const cv=document.createElement("canvas");const sc=Math.min(1,900/Math.max(c.cw,c.ch));cv.width=Math.round(c.cw*sc);cv.height=Math.round(c.ch*sc);
-    const g=cv.getContext("2d");g.drawImage(camVideo,c.cx,c.cy,c.cw,c.ch,0,0,cv.width,cv.height);
-    const refGray=grayFrame(); // reference for tracking, captured with the analyzed frame
-    lastRefGray=refGray;
-    await new Promise(r=>setTimeout(r,90));
-    { const g2=grayFrame(); if(g2){const v=estimateShift(refGray,g2).v; jitterBase=jitterBase*0.6+v*0.4;} }
-    const oc=document.createElement("canvas");oc.width=cv.width;oc.height=cv.height;const og=oc.getContext("2d");og.filter="grayscale(1) contrast(1.8) brightness(1.05)";og.drawImage(cv,0,0);
-    const res=await ocrWorker.recognize(oc);
-    const lines=(res.data.lines||[]).map(l=>({text:(l.text||"").trim().replace(/\s+/g,""),conf:l.confidence,bbox:l.bbox}))
-      .filter(l=>l.conf>55&&(l.text.match(/[\u3040-\u30ff\u4e00-\u9fff]/g)||[]).length>=2);
-    const avgConf=lines.length?lines.reduce((a,l)=>a+l.conf,0)/lines.length:0;
-    let placed=0;
-    if(stale()){staleStreak++;camBusy=false;pendingRescan=false;camStatus.textContent="Moved — rescanning…";camOverlay.innerHTML="";setTimeout(camScan,250);return;}
-    if(lines.length<2||avgConf<65){
-      camStatus.textContent="Stylized text — using AI vision ("+camScanCount+")…";
-      placed=await visionFallback(cv,g);
-    }else{
-      const unknown=[...new Set(lines.map(l=>l.text))].filter(t=>!(t in camCache));
-      if(unknown.length){
-        const arr=await aiJSON('These lines were OCR-read from Japanese signs, menus or labels (may contain small OCR errors — infer the intended text). Translate each into short natural English as it would appear on an English sign. JSON: {"t":["..."]} same order.\n'+JSON.stringify(unknown),400,"gpt-4o-mini");
-        unknown.forEach((t,k)=>{camCache[t]=(arr&&Array.isArray(arr.t)&&arr.t[k])||"";});
-      }
-      if(stale()){staleStreak++;camBusy=false;camOverlay.innerHTML="";setTimeout(camScan,250);return;}
-      camOverlay.innerHTML="";camOverlay.style.transform="";
-      for(const l of lines){
-        const en=camCache[l.text];if(!en)continue;const b=l.bbox;
-        const col=boxColors(g,b.x0-2,b.y0-2,b.x1+2,b.y1+2,cv.width,cv.height);
-        placeBox(en,b.x0/cv.width*100-0.4,b.y0/cv.height*100-0.3,(b.x1-b.x0)/cv.width*100+0.8,(b.y1-b.y0)/cv.height*100+0.6,col.bg,col.fg);placed++;
-      }
-      if(placed)camStatus.textContent=placed+" line(s) — exact positions, tracking";
+// streaming JSON: place each block as soon as it is fully received
+async function visionStream(b64,onBlock){
+  const model=lensHQ?"gpt-4o":"gpt-4o-mini";
+  const body={model,max_tokens:700,temperature:0.1,stream:true,stream_options:{include_usage:true},messages:[{role:"user",content:[
+    {type:"image_url",image_url:{url:"data:image/jpeg;base64,"+b64,detail:lensHQ?"high":"auto"}},
+    {type:"text",text:'A red grid is drawn on this photo: lines every 0.1, labels 0.1-0.9 (x across the top, y down the left). Find every piece of Japanese text. Treat each visually separate line as its own block (each menu line, each heading, each price, each label separately — do NOT merge different lines). For each block give an ENGLISH translation as it would appear on an English sign ("en": English words only, never Japanese), and its tight bounding box read from the grid: x,y = top-left, w,h = size, decimals 0-1. Output ONLY a JSON array, one object per line, like:\n[{"en":"...","x":0.12,"y":0.20,"w":0.30,"h":0.06},\n{"en":"...","x":0.12,"y":0.28,"w":0.25,"h":0.06}]\nIf there is no Japanese text output []'}]}]};
+  const r=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key()},body:JSON.stringify(body)});
+  if(!r.ok){const t=await r.text().catch(()=>"");throw new Error("API "+r.status+(t?": "+t.slice(0,120):""));}
+  const reader=r.body.getReader(),dec=new TextDecoder();let buf="",acc="",seen=0,count=0;
+  while(true){
+    const {done,value}=await reader.read();if(done)break;
+    buf+=dec.decode(value,{stream:true});let idx;
+    while((idx=buf.indexOf("\n"))>=0){
+      const line=buf.slice(0,idx).trim();buf=buf.slice(idx+1);
+      if(!line.startsWith("data:"))continue;const data=line.slice(5).trim();if(data==="[DONE]")continue;
+      try{const j=JSON.parse(data);const d=j.choices&&j.choices[0]&&j.choices[0].delta&&j.choices[0].delta.content;if(d)acc+=d;
+        if(j.usage){const o=model==="gpt-4o";addSpend((j.usage.prompt_tokens||0)*(o?PRICE.o_in:PRICE.mini_in)+(j.usage.completion_tokens||0)*(o?PRICE.o_out:PRICE.mini_out));}
+      }catch(e){}
+      // extract complete {...} objects incrementally
+      const re=/\{[^{}]*\}/g;re.lastIndex=seen;let m;
+      while((m=re.exec(acc))){try{const o=JSON.parse(m[0]);if(o.en&&!JA_RE.test(o.en)){onBlock(o);count++;}}catch(e){}seen=re.lastIndex;}
     }
-    if(placed){locked=true;needRescan=false;lockRef=refGray;lostFrames=0;staleStreak=0;}
-  }catch(e){camStatus.textContent="Camera error: "+(e.message||"unknown");}
-  camBusy=false;
-  if(pendingRescan){pendingRescan=false;camScan();}
+  }
+  return count;
 }
-async function visionFallback(cv,g){
+
+async function lensScan(){
+  if(!lensOn||lensHold||lensBusy||(llocked))return;
+  const r=visRect();if(!r)return;
+  lensBusy=true;lstat.textContent="Reading…";
   try{
-    const gc2=document.createElement("canvas");gc2.width=cv.width;gc2.height=cv.height;const gg=gc2.getContext("2d");gg.drawImage(cv,0,0);
-    gg.strokeStyle="rgba(255,0,0,0.5)";gg.lineWidth=1;gg.fillStyle="rgba(255,0,0,0.9)";gg.font=Math.round(cv.height*0.025)+"px sans-serif";
+    const ref=grayFrame();
+    await new Promise(res=>setTimeout(res,80));
+    { const g2=grayFrame(); if(g2){jitter=jitter*0.6+shift(ref,g2).v*0.4;} }
+    const cv=document.createElement("canvas");const sc=Math.min(1,(lensHQ?1024:768)/Math.max(r.w,r.h));cv.width=Math.round(r.w*sc);cv.height=Math.round(r.h*sc);
+    const g=cv.getContext("2d");g.drawImage(lv,r.x,r.y,r.w,r.h,0,0,cv.width,cv.height);
+    // grid copy for the model
+    const gc=document.createElement("canvas");gc.width=cv.width;gc.height=cv.height;const gg=gc.getContext("2d");gg.drawImage(cv,0,0);
+    gg.strokeStyle="rgba(255,0,0,0.45)";gg.lineWidth=1;gg.fillStyle="rgba(255,0,0,0.9)";gg.font=Math.round(cv.height*0.025)+"px sans-serif";
     for(let i=1;i<10;i++){const gx=cv.width*i/10,gy=cv.height*i/10;gg.beginPath();gg.moveTo(gx,0);gg.lineTo(gx,cv.height);gg.stroke();gg.beginPath();gg.moveTo(0,gy);gg.lineTo(cv.width,gy);gg.stroke();gg.fillText((i/10).toFixed(1),gx+2,12);gg.fillText((i/10).toFixed(1),2,gy-3);}
-    const b64=gc2.toDataURL("image/jpeg",0.72).split(",")[1];
-    const r=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key()},
-      body:JSON.stringify({model:"gpt-4o",max_tokens:700,response_format:{type:"json_object"},messages:[{role:"user",content:[{type:"image_url",image_url:{url:"data:image/jpeg;base64,"+b64,detail:"auto"}},
-        {type:"text",text:'A red coordinate grid is drawn on this photo (lines every 0.1, labels 0.1-0.9; x across the top, y down the left). Find every block of Japanese text (a heading, a line, a price, a label — group characters that clearly belong together). For each: translate into short natural ENGLISH as it would appear on an English sign ("en" must be English words only), and give its tight bounding box read from the grid: x,y top-left, w,h size, decimals 0-1. JSON: {"blocks":[{"en":"...","x":0.12,"y":0.20,"w":0.30,"h":0.08}]}'}]}]})});
-    if(!r.ok)return 0;
-    const data=await r.json();
-    if(data.usage)addSpend((data.usage.prompt_tokens||0)*PRICE.o_in+(data.usage.completion_tokens||0)*PRICE.o_out);
-    let obj;try{obj=JSON.parse(stripFences(data.choices[0].message.content||""));}catch(e){return 0;}
-    let blocks=(Array.isArray(obj.blocks)?obj.blocks:[]).filter(b=>b.en&&!JA_RE.test(b.en));
-    if(!blocks.length){camStatus.textContent="No Japanese text detected";return 0;}
-    if(stale()){staleStreak++;camOverlay.innerHTML="";pendingRescan=true;return 0;}
-    camOverlay.innerHTML="";camOverlay.style.transform="";
-    for(const b of blocks){
-      const x=Math.max(0,Math.min(1,+b.x||0)),y=Math.max(0,Math.min(1,+b.y||0)),bw=Math.max(0.06,Math.min(1-x,+b.w||0.3)),bh=Math.max(0.03,Math.min(1-y,+b.h||0.06));
-      const col=boxColors(g,x*cv.width,y*cv.height,(x+bw)*cv.width,(y+bh)*cv.height,cv.width,cv.height);
-      placeBox(b.en,x*100,y*100,bw*100,bh*100,col.bg,col.fg);
-    }
-    camStatus.textContent=blocks.length+" block(s) — approximate, tracking";
-    return blocks.length;
-  }catch(e){return 0;}
+    const b64=gc.toDataURL("image/jpeg",0.7).split(",")[1];
+    let first=true,n=0;
+    const count=await visionStream(b64,b=>{
+      // scene still the same as when we captured? (adaptive; after 2 discards accept anyway)
+      if(first){first=false;const cur=grayFrame();if(cur&&staleN<2&&shift(ref,cur).v>changeThr()){staleN++;throw new Error("__stale");}lo.innerHTML="";lo.style.transform="";}
+      const x=Math.max(0,Math.min(1,+b.x||0)),y=Math.max(0,Math.min(1,+b.y||0)),w=Math.max(0.05,Math.min(1-x,+b.w||0.3)),h=Math.max(0.025,Math.min(1-y,+b.h||0.06));
+      const col=boxColors(g,x*cv.width,y*cv.height,(x+w)*cv.width,(y+h)*cv.height,cv.width,cv.height);
+      placeBox(b.en,x*100,y*100,w*100,h*100,col.bg,col.fg);n++;
+      lstat.textContent=n+" translated…";
+    });
+    if(count){llocked=true;lref=ref;lLost=0;staleN=0;lstat.textContent=count+" translated · tracking (tap to hold)";}
+    else{lstat.textContent="No Japanese text found — move closer or zoom";}
+  }catch(e){
+    if(e.message==="__stale"){lstat.textContent="Moved — rescanning…";lo.innerHTML="";setTimeout(lensScan,200);}
+    else lstat.textContent="Error: "+(e.message||"unknown");
+  }
+  lensBusy=false;
 }
 
 /* ================= PWA ================= */
