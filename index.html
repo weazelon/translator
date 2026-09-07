@@ -79,7 +79,7 @@
 <div class="popup-wrap" id="popups"></div>
 <div class="app">
   <header>
-    <h1>Live Translator <small>v33</small></h1>
+    <h1>Live Translator <small>v35</small></h1>
     <div class="right"><button class="theme" id="themeBtn">🌙</button><div class="status" id="status">Ready</div></div>
   </header>
 
@@ -108,7 +108,10 @@
       <svg class="bigIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h3l2-3h6l2 3h3a2 2 0 0 1 2 2v9a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V9a2 2 0 0 1 2-2z"/><circle cx="12" cy="13" r="4"/></svg>
       <span class="bigLbl">Camera</span><span class="bigSub">translate signs &amp; menus in place</span>
     </button>
-    <button class="side" id="autoSpeak" style="align-self:center">🔊 Auto-speak: OFF</button>
+    <div style="display:flex;flex-direction:column;gap:6px;justify-content:center">
+      <button class="side" id="regBtn">😎 Casual</button>
+      <button class="side" id="autoSpeak">🔊 Auto-speak: OFF</button>
+    </div>
   </div>
 
   <div class="box" id="camBox" style="display:none">
@@ -123,6 +126,39 @@
   </div>
 
   <div class="err" id="err"></div>
+
+  <details class="box" style="min-height:0" id="listenPanel">
+    <summary class="label" style="cursor:pointer">🎧 Listening settings</summary>
+    <div style="display:flex;flex-direction:column;gap:10px;margin-top:8px">
+      <div>
+        <div class="label">Mic sensitivity <span id="sensVal" style="color:var(--ok)">normal</span></div>
+        <input type="range" id="sensRange" min="1" max="5" step="1" value="3" style="width:100%">
+        <div class="hint" style="text-align:start">← quiet room &nbsp;·&nbsp; noisy bar →</div>
+      </div>
+      <div>
+        <div class="label">Pause that ends a sentence <span id="pauseVal" style="color:var(--ok)">0.5 s</span></div>
+        <input type="range" id="pauseRange" min="300" max="1200" step="100" value="500" style="width:100%">
+        <div class="hint" style="text-align:start">← snappier &nbsp;·&nbsp; fewer mid-sentence cuts →</div>
+      </div>
+      <div>
+        <div class="label">Scene (vocabulary hint)</div>
+        <select id="sceneSel" style="width:100%;margin-top:4px">
+          <option value="">General conversation</option>
+          <option value="izakaya">Izakaya / bar / drinks</option>
+          <option value="restaurant">Restaurant / ordering food</option>
+          <option value="shopping">Shopping / electronics / anime goods</option>
+          <option value="station">Train station / directions</option>
+          <option value="hotel">Hotel / check-in</option>
+          <option value="dating">Meeting people / dating</option>
+          <option value="gaming">Arcade / game bar</option>
+        </select>
+      </div>
+      <div>
+        <div class="label">Custom words &amp; names (comma separated)</div>
+        <input type="text" id="customWords" placeholder="Reina, Den Den Town, Ikebukuro, Quinn" style="width:100%;margin-top:4px;padding:10px;border-radius:10px;border:1.5px solid var(--line);background:var(--panel);color:var(--ink);font-size:.95rem">
+      </div>
+    </div>
+  </details>
 
   <details class="box" style="min-height:0">
     <summary class="label" style="cursor:pointer">⚙️ Settings — OpenAI API key</summary>
@@ -199,7 +235,56 @@ $("budgetUsd").addEventListener("change",()=>{localStorage.setItem("lt_budget",$
 updateUsageLine();
 
 /* ================= OpenAI ================= */
-const NATIVE_JA="Sound like a native Japanese speaker in casual real conversation: natural word choice and particles, contractions where natural (してる not している), casual register unless the content is clearly formal. Never stiff textbook Japanese.";
+let register=localStorage.getItem("lt_register")||"casual";
+const regBtn=$("regBtn");
+function refreshReg(){regBtn.textContent=register==="casual"?"😎 Casual":"🙇 Polite";regBtn.classList.toggle("on",register==="polite");}
+regBtn.onclick=()=>{register=register==="casual"?"polite":"casual";localStorage.setItem("lt_register",register);refreshReg();};
+refreshReg();
+function nativeJa(){
+  return register==="casual"
+   ? "Write it the way a native Japanese speaker in their 20s-30s would actually SAY it to a friend or someone at a bar: casual plain form (だ/だよ/だね/じゃん/〜てる/〜ちゃう), natural sentence-final particles, drop pronouns and subjects the way natives do, use the natural Japanese equivalent of English idioms rather than literal translation, keep it as short as real speech. Never stiff, never textbook, never keigo."
+   : "Write it the way a native Japanese speaker would politely say it to a shop staff member, a stranger, or someone older: natural です/ます form with everyday polite phrasing (すみません、〜ていただけますか、〜でお願いします), drop pronouns the way natives do, use natural equivalents of English idioms, keep it as short as real speech. Polite but warm and natural, never stiff or overly formal keigo.";
+}
+/* ---- listening settings ---- */
+const SENS_LABELS={1:"very quiet room",2:"quiet",3:"normal",4:"noisy",5:"very noisy bar"};
+const SENS_MULT={1:2.2,2:2.8,3:3.5,4:4.5,5:6.0};   // threshold multiplier over noise floor
+const SENS_MIN ={1:0.006,2:0.009,3:0.012,4:0.018,5:0.026}; // absolute minimum threshold
+const sensRange=$("sensRange"),pauseRange=$("pauseRange"),sceneSel=$("sceneSel"),customWords=$("customWords");
+sensRange.value=localStorage.getItem("lt_sens")||"3";
+pauseRange.value=localStorage.getItem("lt_pause")||"500";
+sceneSel.value=localStorage.getItem("lt_scene")||"";
+customWords.value=localStorage.getItem("lt_words")||"";
+function refreshListenUI(){$("sensVal").textContent=SENS_LABELS[sensRange.value];$("pauseVal").textContent=(pauseRange.value/1000).toFixed(1)+" s";}
+sensRange.oninput=()=>{localStorage.setItem("lt_sens",sensRange.value);refreshListenUI();};
+pauseRange.oninput=()=>{localStorage.setItem("lt_pause",pauseRange.value);refreshListenUI();};
+sceneSel.onchange=()=>localStorage.setItem("lt_scene",sceneSel.value);
+customWords.onchange=()=>localStorage.setItem("lt_words",customWords.value.trim());
+refreshListenUI();
+const SCENE_HINT={
+  "":"",
+  izakaya:"Setting: Japanese izakaya or bar. Expect drink names (生ビール, ハイボール, 酎ハイ, 日本酒), toasts (乾杯), small talk, おかわり, お会計.",
+  restaurant:"Setting: restaurant. Expect menu items, ramen, yakiniku, tonkatsu, 注文, おすすめ, 苦手, アレルギー, お会計.",
+  shopping:"Setting: shopping in Akihabara / Den Den Town / Animate / Don Quijote / Yodobashi. Expect prices, 免税, サイズ, 在庫, フィギュア, グッズ, ガチャ, brand and anime names.",
+  station:"Setting: train station. Expect line names, 改札, ホーム, 乗り換え, 終電, 新幹線, 指定席, 自由席, Suica.",
+  hotel:"Setting: hotel or Airbnb check-in. Expect チェックイン, 予約, パスポート, 部屋, 鍵, 荷物, Wi-Fi.",
+  dating:"Setting: meeting new people, flirting, dating small talk. Expect names, ages, hobbies, 趣味, 出身, 連絡先, LINE, また会いたい.",
+  gaming:"Setting: arcade or game bar. Expect ゲーム, 対戦, 音ゲー, クレーンゲーム, コイン, 順番, スコア."
+};
+function listenPrompt(){
+  const words=customWords.value.trim();
+  return "Conversation mixing Japanese, English and Hebrew. Some speakers have a foreign accent. Write Japanese in Japanese script. "
+    +(SCENE_HINT[sceneSel.value]||"")
+    +(words?" Names and terms that may come up, spell them exactly like this: "+words+".":"")
+    +" If there is no clear speech, return nothing.";
+}
+
+const convoCtx=[]; // last few turns for context
+function pushCtx(src,text,dst,trans){convoCtx.push(LANG[src].name+": "+text+"  →  "+LANG[dst].name+": "+trans);while(convoCtx.length>4)convoCtx.shift();}
+const ctxBlock=()=>{
+  const words=customWords.value.trim();
+  return (words?"Proper names/terms to keep as-is: "+words+".\n":"")
+    +(convoCtx.length?"Recent conversation for context (do not translate this):\n"+convoCtx.join("\n")+"\n\n":"");
+};
 async function ai(content,maxTokens,model,jsonMode){
   const body={model:model||"gpt-4o-mini",max_tokens:maxTokens||300,temperature:0.3,messages:[{role:"user",content}]};
   if(jsonMode)body.response_format={type:"json_object"};
@@ -235,15 +320,17 @@ async function aiStream(content,maxTokens,model,onDelta){
 async function aiJSON(content,maxTokens,model){try{return JSON.parse(stripFences(await ai(content,maxTokens,model,true)));}catch(e){return null;}}
 async function translate(text,src,dst,onDelta){
   const toJa=dst==="ja";
-  const prompt="Translate this "+LANG[src].name+" speech into "+LANG[dst].name+". "+(toJa?NATIVE_JA+" ":"")+"Reply with the translation ONLY, in "+LANG[dst].name+(dst==="en"?" (no Japanese characters)":"")+".\n"+text;
+  const prompt=ctxBlock()+"Translate this "+LANG[src].name+" speech into "+LANG[dst].name+". "+(toJa?nativeJa()+" ":"Natural, conversational "+LANG[dst].name+" as a native would say it. ")+"Reply with the translation ONLY, in "+LANG[dst].name+(dst==="en"?" (no Japanese characters)":"")+".\n"+text;
   const out=await aiStream(prompt, toJa?200:150, toJa?"gpt-4o":"gpt-4o-mini", onDelta);
   if(dst==="en"&&JA_RE.test(out))return await ai("Translate to natural English. English only:\n"+text,150);
   return out;
 }
 async function romaji(ja){const r=await ai("Hepburn romaji of this Japanese, Latin letters only, nothing else:\n"+ja,120);return JA_RE.test(r)?"":r;}
 async function suggestions(ja,meaningLang){
-  const o=await aiJSON('Someone said in Japanese: "'+ja.replace(/"/g,"'")+'"\nSuggest 3 short natural replies a native speaker would actually say (casual, conversational). JSON: {"replies":[{"ja":"...","romaji":"Latin letters only","meaning":"in '+meaningLang+'"}]}',500,"gpt-4o-mini");
-  return o&&Array.isArray(o.replies)?o.replies.filter(r=>r.ja):[];
+  const o=await aiJSON(ctxBlock()+'The other person just said in Japanese: "'+ja.replace(/"/g,"'")+'"\n'
+   +'Suggest 3 replies I could say next, each with a different intent (e.g. agree/answer, ask back, react/joke). '+nativeJa()+'\n'
+   +'JSON: {"replies":[{"ja":"the reply in Japanese","romaji":"Hepburn romaji, Latin letters only","meaning":"natural '+meaningLang+' meaning"}]}',600,"gpt-4o");
+  return o&&Array.isArray(o.replies)?o.replies.filter(r=>r.ja&&!JA_RE.test(r.romaji||"")):[];
 }
 
 /* ================= history / suggestions ================= */
@@ -353,7 +440,8 @@ function onAudio(e){
   const rms=Math.sqrt(sum/f.length);
   // adaptive noise floor: drifts down quickly, up slowly
   if(rms<noiseFloor)noiseFloor=noiseFloor*0.9+rms*0.1; else noiseFloor=noiseFloor*0.995+rms*0.005;
-  const thresh=Math.max(0.012,noiseFloor*3.5);
+  const sv=sensRange.value;
+  const thresh=Math.max(SENS_MIN[sv],noiseFloor*SENS_MULT[sv]);
   const now=Date.now();
   const chunk=new Float32Array(f);
   if(!inSpeech){
@@ -364,7 +452,8 @@ function onAudio(e){
     pcmSeg.push(chunk);
     if(rms>thresh)lastLoud=now;
     const dur=now-speechStart;
-    if(now-lastLoud>SILENCE_MS||dur>MAX_MS){
+    const silenceMs=parseInt(pauseRange.value)||500;
+    if(now-lastLoud>silenceMs||dur>MAX_MS){
       const seg=pcmSeg;pcmSeg=[];inSpeech=false;setStatus(forcedSrc?"Listening ("+LANG[forcedSrc].label+")…":"Simultaneous — listening to both languages…",true);
       if(dur-(now-lastLoud)>=MIN_MS){const blob=wavBlob(seg,TARGET_SR);processSegment(blob,forcedSrc,forcedDst);}
     }
@@ -383,7 +472,7 @@ const JUNK=["thank you","thanks for watching","ご視聴ありがとうござい
 async function transcribe(blob,lang){
   const fd=new FormData();fd.append("file",blob,"seg.wav");fd.append("model","gpt-4o-mini-transcribe");
   if(lang)fd.append("language",lang);
-  fd.append("prompt","Conversation mixing Japanese, English and Hebrew. Some speakers have a foreign accent. Write Japanese in Japanese script. If there is no clear speech, return nothing.");
+  fd.append("prompt",listenPrompt());
   const wr=await fetch("https://api.openai.com/v1/audio/transcriptions",{method:"POST",headers:{"Authorization":"Bearer "+key()},body:fd});
   if(!wr.ok){const t=await wr.text().catch(()=>"");throw new Error("API "+wr.status+(t?": "+t.slice(0,120):""));}
   addSpend(((blob.size-44)/(TARGET_SR*2))/60*PRICE.stt_min);
@@ -411,7 +500,7 @@ async function processSegment(blob,fSrc,fDst){
     const pTrans=translate(text,segSrc,segDst,partial=>{dstEl.textContent=partial;outText.textContent=partial;outText.dir=segDst==="he"?"rtl":"ltr";});
     const pRo=jaInput?romaji(text):pTrans.then(t=>romaji(t));
     const pSug=jaInput?suggestions(text,(fDst==="he")?"Hebrew":"English"):Promise.resolve([]);
-    pTrans.then(t=>{el.querySelector(".dst").textContent=t;if(autoSpeak)speak(t,segDst);}).catch(e=>{el.querySelector(".dst").textContent="(translation failed)";showErr("Translation error — "+(e.message||""));});
+    pTrans.then(t=>{el.querySelector(".dst").textContent=t;pushCtx(segSrc,text,segDst,t);if(autoSpeak)speak(t,segDst);}).catch(e=>{el.querySelector(".dst").textContent="(translation failed)";showErr("Translation error — "+(e.message||""));});
     pRo.then(r=>{el.querySelector(".ro").textContent=r||"";outRomaji.textContent=r||"";}).catch(()=>{});
     const meaningLang=(segSrc==="he"||segDst==="he")?"Hebrew":"English";
     pSug.then(reps=>addSuggestionSet(reps,text,meaningLang==="Hebrew"?"rtl":"ltr")).catch(()=>{});
