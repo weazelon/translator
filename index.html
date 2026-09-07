@@ -32,10 +32,9 @@
   .turn.a{border-color:var(--accent)} .turn.b{border-color:var(--purple)}
   .turn .who{font-size:.72rem;font-weight:800;opacity:.85;margin-bottom:2px}
   .turn.a .who{color:var(--accent)} .turn.b .who{color:var(--purple-soft)}
-  .turn .dst{font-size:1.08rem;font-weight:600}
-  .turn .src{font-size:.9rem;color:var(--muted)}
-  .turn.b .src{font-size:1.08rem;font-weight:600;color:var(--ink)}
-  .turn.b .dst{font-size:.95rem;color:var(--muted);font-weight:500}
+  .turn .src{font-size:1.08rem;font-weight:600;color:var(--ink)}
+  .turn .dst{font-size:.95rem;color:var(--muted);font-weight:500}
+  .turn.a .dst{font-size:1.02rem;color:var(--ink);font-weight:600}
   .turn .ro{font-size:.92rem;color:#e0b400;font-style:italic;font-weight:600}
   body.dark .turn .ro{color:#ffd54a}
   #outBox{border-color:var(--accent);border-width:2px} #outBox .label{color:var(--accent)}
@@ -80,7 +79,7 @@
 <div class="popup-wrap" id="popups"></div>
 <div class="app">
   <header>
-    <h1>Live Translator <small>v32</small></h1>
+    <h1>Live Translator <small>v33</small></h1>
     <div class="right"><button class="theme" id="themeBtn">🌙</button><div class="status" id="status">Ready</div></div>
   </header>
 
@@ -253,8 +252,8 @@ function pushTurn(cls,srcText,dstText,ro,srcLangCode){
   const d=document.createElement("div");d.className="turn "+cls;
   const who='<div class="who">🗣 '+esc(LANG[srcLangCode]?LANG[srcLangCode].label:srcLangCode)+'</div>';
   const src='<div class="src">'+esc(srcText)+'</div>', dst='<div class="dst">'+esc(dstText)+'</div>', roEl='<div class="ro">'+esc(ro||"")+'</div>';
-  // Japanese first, romaji right under it, then the other language
-  d.innerHTML = srcLangCode==="ja" ? who+src+roEl+dst : who+dst+roEl+src;
+  // spoken language first; romaji always directly under the Japanese line
+  d.innerHTML = srcLangCode==="ja" ? who+src+roEl+dst : who+src+dst+roEl;
   histList.prepend(d);histList.scrollTop=0;return d;
 }
 function addSuggestionSet(replies,forText,dir){
@@ -404,10 +403,8 @@ async function processSegment(blob,fSrc,fDst){
     el.className="turn "+(segSrc==="en"?"a":"b");
     el.querySelector(".who").textContent="🗣 "+LANG[segSrc].label;
     el.querySelector(".src").textContent=text;
-    if(segSrc==="ja"){ // Japanese spoken: Japanese → romaji → translation
-      const w=el.querySelector(".who"),sr=el.querySelector(".src"),ro=el.querySelector(".ro"),ds=el.querySelector(".dst");
-      el.append(w,sr,ro,ds);
-    }
+    { const w=el.querySelector(".who"),sr=el.querySelector(".src"),ro=el.querySelector(".ro"),ds=el.querySelector(".dst");
+      if(segSrc==="ja") el.append(w,sr,ro,ds); else el.append(w,sr,ds,ro); }
     // PARALLEL: translation, romaji (of the Japanese side), suggestions (if Japanese was spoken)
     const jaInput=segSrc==="ja";
     const dstEl=el.querySelector(".dst");
