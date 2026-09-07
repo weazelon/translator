@@ -62,6 +62,7 @@
   .big-cam.on{outline:3px solid var(--ok)}
   .side{border:1.5px solid var(--line);background:var(--panel);border-radius:12px;padding:9px 12px;cursor:pointer;font-size:.85rem;font-weight:700;color:var(--ink)}
   .side.on{border-color:var(--ok);color:var(--ok)}
+  .pill{margin-inline-start:8px;border:none;border-radius:999px;background:var(--live);color:#fff;font-size:.72rem;font-weight:800;padding:2px 9px;cursor:pointer;vertical-align:middle}
   .hint{text-align:center;font-size:.8rem;color:var(--muted)}
   .err{display:none;background:var(--err-bg);border:1px solid var(--err-line);color:var(--err-ink);border-radius:12px;padding:10px 12px;font-size:.88rem} .err.show{display:block}
   .popup-wrap{position:fixed;top:10px;left:10px;right:10px;z-index:999;display:flex;flex-direction:column;gap:8px;pointer-events:none}
@@ -79,12 +80,12 @@
 <div class="popup-wrap" id="popups"></div>
 <div class="app">
   <header>
-    <h1>Live Translator <small>v35</small></h1>
+    <h1>Live Translator <small>v36</small></h1>
     <div class="right"><button class="theme" id="themeBtn">🌙</button><div class="status" id="status">Ready</div></div>
   </header>
 
-  <div class="box" id="histBox" style="display:none"><div class="label">Conversation (newest first)</div><div id="histList"></div></div>
-  <div class="box" id="repliesBox" style="display:none"><div class="label">💬 Suggested replies — tap to hear in Japanese</div><div id="repliesList"></div></div>
+  <div class="box" id="histBox" style="display:none"><div class="label">Conversation (newest first) <button class="pill" id="histPill" style="display:none">↑ new</button></div><div id="histList"></div></div>
+  <div class="box" id="repliesBox" style="display:none"><div class="label">💬 Suggested replies — tap to hear in Japanese <button class="pill" id="repPill" style="display:none">↑ new</button></div><div id="repliesList"></div></div>
   <div class="box" id="outBox"><div class="label">Translation</div><div class="text placeholder" id="outText">…</div><div class="romaji" id="outRomaji"></div></div>
   <div class="box" id="inBox"><div class="label">Heard</div><div class="text placeholder" id="inText">Tap a mic and speak…</div></div>
 
@@ -333,7 +334,30 @@ async function suggestions(ja,meaningLang){
   return o&&Array.isArray(o.replies)?o.replies.filter(r=>r.ja&&!JA_RE.test(r.romaji||"")):[];
 }
 
-/* ================= history / suggestions ================= */
+/* ================= history / suggestions (scroll-hold) ================= */
+const holdState=new Map(); // list -> {touchedAt, pending, pill}
+function initHold(list,pill){
+  const st={touchedAt:0,pending:0,pill};holdState.set(list,st);
+  const touch=()=>{st.touchedAt=Date.now();};
+  list.addEventListener("touchstart",touch,{passive:true});
+  list.addEventListener("touchmove",touch,{passive:true});
+  list.addEventListener("wheel",touch,{passive:true});
+  list.addEventListener("scroll",()=>{touch();if(list.scrollTop<=2&&st.pending){st.pending=0;pill.style.display="none";}},{passive:true});
+  pill.onclick=()=>{list.scrollTo({top:0,behavior:"smooth"});st.pending=0;pill.style.display="none";st.touchedAt=0;};
+}
+function isReading(list){const st=holdState.get(list);if(!st)return false;return list.scrollTop>2||(Date.now()-st.touchedAt<4000);}
+// run a DOM mutation on `list` without moving what the user is looking at
+function mutateKeep(list,fn,countAsNew){
+  const st=holdState.get(list);
+  const reading=isReading(list);
+  const before=list.scrollHeight,top=list.scrollTop;
+  fn();
+  if(reading){
+    list.scrollTop=top+(list.scrollHeight-before);
+    if(countAsNew&&st){st.pending++;st.pill.textContent="↑ "+st.pending+" new";st.pill.style.display="";}
+  }else{list.scrollTop=0;}
+}
+initHold(histList,$("histPill"));initHold(repliesList,$("repPill"));
 function pushTurn(cls,srcText,dstText,ro,srcLangCode){
   histBox.style.display="";
   const d=document.createElement("div");d.className="turn "+cls;
@@ -341,7 +365,7 @@ function pushTurn(cls,srcText,dstText,ro,srcLangCode){
   const src='<div class="src">'+esc(srcText)+'</div>', dst='<div class="dst">'+esc(dstText)+'</div>', roEl='<div class="ro">'+esc(ro||"")+'</div>';
   // spoken language first; romaji always directly under the Japanese line
   d.innerHTML = srcLangCode==="ja" ? who+src+roEl+dst : who+src+dst+roEl;
-  histList.prepend(d);histList.scrollTop=0;return d;
+  mutateKeep(histList,()=>histList.prepend(d),true);return d;
 }
 function addSuggestionSet(replies,forText,dir){
   if(!replies.length)return;
@@ -353,7 +377,7 @@ function addSuggestionSet(replies,forText,dir){
     d.innerHTML='<div class="ja">'+esc(rep.ja||"")+'</div><div class="ro">'+esc(rep.romaji||"")+'</div><div class="mean"'+(dir?' dir="'+dir+'"':'')+'>'+esc(rep.meaning||"")+'</div>';
     d.onclick=()=>speak(rep.ja,"ja");set.appendChild(d);
   }
-  repliesList.prepend(set);while(repliesList.children.length>5)repliesList.lastChild.remove();repliesList.scrollTop=0;
+  mutateKeep(repliesList,()=>{repliesList.prepend(set);while(repliesList.children.length>5)repliesList.lastChild.remove();},true);
 }
 
 /* ================= TTS ================= */
@@ -484,24 +508,26 @@ async function processSegment(blob,fSrc,fDst){
   try{
     const text=await transcribe(blob,fSrc||null);
     const tl=(text||"").toLowerCase().replace(/[。、.!?！？\s]+$/,"");
-    if(!text||text.length<2||JUNK.some(j=>tl===j)){el.remove();return;}
+    if(!text||text.length<2||JUNK.some(j=>tl===j)){mutateKeep(histList,()=>el.remove());return;}
     const segSrc=fSrc||(JA_RE.test(text)?"ja":HE_RE.test(text)?"he":"en");
     const segDst=fDst||(segSrc==="en"?"ja":"en");
     inText.classList.remove("placeholder");inText.textContent=text;inText.dir=segSrc==="he"?"rtl":"ltr";
     outText.classList.remove("placeholder");outText.textContent="…";outRomaji.textContent="";
-    el.className="turn "+(segSrc==="en"?"a":"b");
-    el.querySelector(".who").textContent="🗣 "+LANG[segSrc].label;
-    el.querySelector(".src").textContent=text;
-    { const w=el.querySelector(".who"),sr=el.querySelector(".src"),ro=el.querySelector(".ro"),ds=el.querySelector(".dst");
-      if(segSrc==="ja") el.append(w,sr,ro,ds); else el.append(w,sr,ds,ro); }
+    mutateKeep(histList,()=>{
+      el.className="turn "+(segSrc==="en"?"a":"b");
+      el.querySelector(".who").textContent="🗣 "+LANG[segSrc].label;
+      el.querySelector(".src").textContent=text;
+      const w=el.querySelector(".who"),sr=el.querySelector(".src"),ro=el.querySelector(".ro"),ds=el.querySelector(".dst");
+      if(segSrc==="ja") el.append(w,sr,ro,ds); else el.append(w,sr,ds,ro);
+    });
     // PARALLEL: translation, romaji (of the Japanese side), suggestions (if Japanese was spoken)
     const jaInput=segSrc==="ja";
     const dstEl=el.querySelector(".dst");
-    const pTrans=translate(text,segSrc,segDst,partial=>{dstEl.textContent=partial;outText.textContent=partial;outText.dir=segDst==="he"?"rtl":"ltr";});
+    const pTrans=translate(text,segSrc,segDst,partial=>{mutateKeep(histList,()=>{dstEl.textContent=partial;});outText.textContent=partial;outText.dir=segDst==="he"?"rtl":"ltr";});
     const pRo=jaInput?romaji(text):pTrans.then(t=>romaji(t));
     const pSug=jaInput?suggestions(text,(fDst==="he")?"Hebrew":"English"):Promise.resolve([]);
-    pTrans.then(t=>{el.querySelector(".dst").textContent=t;pushCtx(segSrc,text,segDst,t);if(autoSpeak)speak(t,segDst);}).catch(e=>{el.querySelector(".dst").textContent="(translation failed)";showErr("Translation error — "+(e.message||""));});
-    pRo.then(r=>{el.querySelector(".ro").textContent=r||"";outRomaji.textContent=r||"";}).catch(()=>{});
+    pTrans.then(t=>{mutateKeep(histList,()=>{el.querySelector(".dst").textContent=t;});pushCtx(segSrc,text,segDst,t);if(autoSpeak)speak(t,segDst);}).catch(e=>{el.querySelector(".dst").textContent="(translation failed)";showErr("Translation error — "+(e.message||""));});
+    pRo.then(r=>{mutateKeep(histList,()=>{el.querySelector(".ro").textContent=r||"";});outRomaji.textContent=r||"";}).catch(()=>{});
     const meaningLang=(segSrc==="he"||segDst==="he")?"Hebrew":"English";
     pSug.then(reps=>addSuggestionSet(reps,text,meaningLang==="Hebrew"?"rtl":"ltr")).catch(()=>{});
   }catch(e){el.remove();showErr("Simultaneous error: "+(e.message||"unknown"));}
