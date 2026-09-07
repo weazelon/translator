@@ -80,7 +80,7 @@
 <div class="popup-wrap" id="popups"></div>
 <div class="app">
   <header>
-    <h1>Live Translator <small>v38</small></h1>
+    <h1>Live Translator <small>v39</small></h1>
     <div class="right"><button class="theme" id="themeBtn">🌙</button><div class="status" id="status">Ready</div></div>
   </header>
 
@@ -551,7 +551,7 @@ camZoomEl.addEventListener("input",()=>{camZoomF=parseFloat(camZoomEl.value)||1;
 function loadScript(src){return new Promise((res,rej)=>{const t=document.createElement("script");t.src=src;t.onload=res;t.onerror=()=>rej(new Error("failed to load "+src));document.head.appendChild(t);});}
 async function initOcr(){
   if(ocrReady||ocrLoading)return;ocrLoading=true;camStatus.textContent="Loading text-recognition engine (first time only, ~15 MB)…";
-  try{await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js");ocrWorker=await Tesseract.createWorker(["jpn","jpn_vert"]);await ocrWorker.setParameters({tessedit_pageseg_mode:"11"});ocrReady=true;camStatus.textContent="Text engine ready.";}
+  try{await loadScript("https://cdn.jsdelivr.net/npm/tesseract.js@5/dist/tesseract.min.js");ocrWorker=await Tesseract.createWorker("jpn");await ocrWorker.setParameters({tessedit_pageseg_mode:"11"});ocrReady=true;camStatus.textContent="Text engine ready.";}
   catch(e){camStatus.textContent="Could not load OCR engine: "+(e.message||"")+" — check internet.";}
   ocrLoading=false;
 }
@@ -561,7 +561,7 @@ $("camBtn").onclick=async()=>{
   if(simulOn)stopSimul();
   try{camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment",width:{ideal:1280}},audio:false});}catch(e){showErr("Camera permission denied or unavailable.");return;}
   camVideo.srcObject=camStream;camBox.style.display="";camOverlay.innerHTML="";camScanCount=0;unlock();$("camBtn").classList.add("on");
-  initOcr();camTimer=setInterval(camScan,1500);trackLoop();
+  initOcr();camTimer=setInterval(camScan,1000);trackLoop();
 };
 $("camStop").onclick=()=>{clearInterval(camTimer);camTimer=null;if(trackRAF)cancelAnimationFrame(trackRAF);trackRAF=null;if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;}camBox.style.display="none";camOverlay.innerHTML="";$("camBtn").classList.remove("on");};
 
@@ -587,7 +587,9 @@ function estimateShift(ref,cur){ // returns {dx,dy,score} in tracking px; coarse
   const c=best;for(let dy=c.dy-1;dy<=c.dy+1;dy++)for(let dx=c.dx-1;dx<=c.dx+1;dx++){const v=sad(cur,ref,dx,dy);if(v<best.v)best={dx,dy,v};}
   return best;
 }
-function unlock(){locked=false;lockRef=null;lockDx=lockDy=0;lostFrames=0;needRescan=true;camOverlay.style.transform="";}
+let pendingRescan=false,scanGen=0,lastRefGray=null;
+function stale(){const cur=grayFrame();return !cur||!lastRefGray||estimateShift(lastRefGray,cur).v>22;}
+function unlock(clear){locked=false;lockRef=null;lockDx=lockDy=0;lostFrames=0;needRescan=true;camOverlay.style.transform="";if(clear){camOverlay.innerHTML="";}}
 function trackLoop(){
   trackRAF=requestAnimationFrame(trackLoop);
   const now=performance.now();if(now-lastTrackT<66)return;lastTrackT=now; // ~15 fps
@@ -595,12 +597,12 @@ function trackLoop(){
   const cur=grayFrame();if(!cur)return;
   const m=estimateShift(lockRef,cur);
   // score: how well the aligned frames match (0 = identical)
-  if(m.v>28){lostFrames++;if(lostFrames>4){unlock();camStatus.textContent="Scene changed — rescanning…";camScan();}return;}
+  if(m.v>22){lostFrames++;if(lostFrames>2){unlock(true);camStatus.textContent="Scene changed — rescanning…";camScan();}return;}
   lostFrames=0;lockDx=m.dx;lockDy=m.dy;
   const W=camVideo.clientWidth,H=camVideo.clientHeight;
   camOverlay.style.transform="translate("+(m.dx/TW*W)+"px,"+(m.dy/TH*H)+"px)";
   // if drifted near the search edge, re-lock so tracking never saturates
-  if(Math.abs(m.dx)>=10||Math.abs(m.dy)>=8){unlock();camScan();}
+  if(Math.abs(m.dx)>=10||Math.abs(m.dy)>=8){unlock(false);camScan();}
 }
 
 /* ---- colors: separate background vs text color inside a box (2-cluster on luminance) ---- */
@@ -634,29 +636,34 @@ function placeBox(en,xPct,yPct,wPct,hPct,bg,fg){
 }
 
 async function camScan(){
-  if(camBusy||!camStream||!ocrReady)return;
+  if(!camStream||!ocrReady)return;
+  if(camBusy){pendingRescan=true;return;}
   if(locked&&!needRescan)return;
   const c=crop();if(!c.w)return;
   camBusy=true;camScanCount++;camStatus.textContent="Scanning… ("+camScanCount+")";
+  const myGen=++scanGen;
   try{
-    const cv=document.createElement("canvas");const sc=Math.min(1,1280/Math.max(c.cw,c.ch));cv.width=Math.round(c.cw*sc);cv.height=Math.round(c.ch*sc);
+    const cv=document.createElement("canvas");const sc=Math.min(1,900/Math.max(c.cw,c.ch));cv.width=Math.round(c.cw*sc);cv.height=Math.round(c.ch*sc);
     const g=cv.getContext("2d");g.drawImage(camVideo,c.cx,c.cy,c.cw,c.ch,0,0,cv.width,cv.height);
     const refGray=grayFrame(); // reference for tracking, captured with the analyzed frame
+    lastRefGray=refGray;
     const oc=document.createElement("canvas");oc.width=cv.width;oc.height=cv.height;const og=oc.getContext("2d");og.filter="grayscale(1) contrast(1.8) brightness(1.05)";og.drawImage(cv,0,0);
     const res=await ocrWorker.recognize(oc);
     const lines=(res.data.lines||[]).map(l=>({text:(l.text||"").trim().replace(/\s+/g,""),conf:l.confidence,bbox:l.bbox}))
       .filter(l=>l.conf>55&&(l.text.match(/[\u3040-\u30ff\u4e00-\u9fff]/g)||[]).length>=2);
     const avgConf=lines.length?lines.reduce((a,l)=>a+l.conf,0)/lines.length:0;
     let placed=0;
+    if(stale()){camBusy=false;pendingRescan=false;camStatus.textContent="Moved — rescanning…";camOverlay.innerHTML="";return camScan();}
     if(lines.length<2||avgConf<65){
       camStatus.textContent="Stylized text — using AI vision ("+camScanCount+")…";
       placed=await visionFallback(cv,g);
     }else{
       const unknown=[...new Set(lines.map(l=>l.text))].filter(t=>!(t in camCache));
       if(unknown.length){
-        const arr=await aiJSON('These lines were OCR-read from Japanese signs, menus or labels (may contain small OCR errors — infer the intended text). Translate each into short natural English as it would appear on an English sign. JSON: {"t":["..."]} same order.\n'+JSON.stringify(unknown),500,"gpt-4o");
+        const arr=await aiJSON('These lines were OCR-read from Japanese signs, menus or labels (may contain small OCR errors — infer the intended text). Translate each into short natural English as it would appear on an English sign. JSON: {"t":["..."]} same order.\n'+JSON.stringify(unknown),400,"gpt-4o-mini");
         unknown.forEach((t,k)=>{camCache[t]=(arr&&Array.isArray(arr.t)&&arr.t[k])||"";});
       }
+      if(stale()){camBusy=false;camOverlay.innerHTML="";return camScan();}
       camOverlay.innerHTML="";camOverlay.style.transform="";
       for(const l of lines){
         const en=camCache[l.text];if(!en)continue;const b=l.bbox;
@@ -668,6 +675,7 @@ async function camScan(){
     if(placed){locked=true;needRescan=false;lockRef=refGray;lostFrames=0;}
   }catch(e){camStatus.textContent="Camera error: "+(e.message||"unknown");}
   camBusy=false;
+  if(pendingRescan){pendingRescan=false;camScan();}
 }
 async function visionFallback(cv,g){
   try{
@@ -676,7 +684,7 @@ async function visionFallback(cv,g){
     for(let i=1;i<10;i++){const gx=cv.width*i/10,gy=cv.height*i/10;gg.beginPath();gg.moveTo(gx,0);gg.lineTo(gx,cv.height);gg.stroke();gg.beginPath();gg.moveTo(0,gy);gg.lineTo(cv.width,gy);gg.stroke();gg.fillText((i/10).toFixed(1),gx+2,12);gg.fillText((i/10).toFixed(1),2,gy-3);}
     const b64=gc2.toDataURL("image/jpeg",0.72).split(",")[1];
     const r=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key()},
-      body:JSON.stringify({model:"gpt-4o",max_tokens:700,response_format:{type:"json_object"},messages:[{role:"user",content:[{type:"image_url",image_url:{url:"data:image/jpeg;base64,"+b64,detail:"high"}},
+      body:JSON.stringify({model:"gpt-4o",max_tokens:700,response_format:{type:"json_object"},messages:[{role:"user",content:[{type:"image_url",image_url:{url:"data:image/jpeg;base64,"+b64,detail:"auto"}},
         {type:"text",text:'A red coordinate grid is drawn on this photo (lines every 0.1, labels 0.1-0.9; x across the top, y down the left). Find every block of Japanese text (a heading, a line, a price, a label — group characters that clearly belong together). For each: translate into short natural ENGLISH as it would appear on an English sign ("en" must be English words only), and give its tight bounding box read from the grid: x,y top-left, w,h size, decimals 0-1. JSON: {"blocks":[{"en":"...","x":0.12,"y":0.20,"w":0.30,"h":0.08}]}'}]}]})});
     if(!r.ok)return 0;
     const data=await r.json();
@@ -684,6 +692,7 @@ async function visionFallback(cv,g){
     let obj;try{obj=JSON.parse(stripFences(data.choices[0].message.content||""));}catch(e){return 0;}
     let blocks=(Array.isArray(obj.blocks)?obj.blocks:[]).filter(b=>b.en&&!JA_RE.test(b.en));
     if(!blocks.length){camStatus.textContent="No Japanese text detected";return 0;}
+    if(stale()){camOverlay.innerHTML="";pendingRescan=true;return 0;}
     camOverlay.innerHTML="";camOverlay.style.transform="";
     for(const b of blocks){
       const x=Math.max(0,Math.min(1,+b.x||0)),y=Math.max(0,Math.min(1,+b.y||0)),bw=Math.max(0.06,Math.min(1-x,+b.w||0.3)),bh=Math.max(0.03,Math.min(1-y,+b.h||0.06));
