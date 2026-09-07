@@ -80,7 +80,7 @@
 <div class="popup-wrap" id="popups"></div>
 <div class="app">
   <header>
-    <h1>Live Translator <small>v36</small></h1>
+    <h1>Live Translator <small>v38</small></h1>
     <div class="right"><button class="theme" id="themeBtn">🌙</button><div class="status" id="status">Ready</div></div>
   </header>
 
@@ -327,6 +327,12 @@ async function translate(text,src,dst,onDelta){
   return out;
 }
 async function romaji(ja){const r=await ai("Hepburn romaji of this Japanese, Latin letters only, nothing else:\n"+ja,120);return JA_RE.test(r)?"":r;}
+async function followups(text,src,jaTranslation,meaningLang){
+  const o=await aiJSON(ctxBlock()+'I just said in '+LANG[src].name+': "'+text.replace(/"/g,"'")+'" (in Japanese: '+jaTranslation+')\n'
+   +'Suggest 3 natural things I might want to say NEXT in Japanese to continue (e.g. a follow-up question, adding detail, a polite closer). '+nativeJa()+'\n'
+   +'JSON: {"replies":[{"ja":"...","romaji":"Hepburn romaji, Latin letters only","meaning":"natural '+meaningLang+' meaning"}]}',600,"gpt-4o");
+  return o&&Array.isArray(o.replies)?o.replies.filter(r=>r.ja&&!JA_RE.test(r.romaji||"")):[];
+}
 async function suggestions(ja,meaningLang){
   const o=await aiJSON(ctxBlock()+'The other person just said in Japanese: "'+ja.replace(/"/g,"'")+'"\n'
    +'Suggest 3 replies I could say next, each with a different intent (e.g. agree/answer, ask back, react/joke). '+nativeJa()+'\n'
@@ -367,11 +373,11 @@ function pushTurn(cls,srcText,dstText,ro,srcLangCode){
   d.innerHTML = srcLangCode==="ja" ? who+src+roEl+dst : who+src+dst+roEl;
   mutateKeep(histList,()=>histList.prepend(d),true);return d;
 }
-function addSuggestionSet(replies,forText,dir){
+function addSuggestionSet(replies,forText,dir,kind){
   if(!replies.length)return;
   repliesBox.style.display="";
   const set=document.createElement("div");
-  set.innerHTML='<div class="label" style="margin-top:6px;opacity:.8">↳ replies to: '+esc((forText||"").slice(0,40))+'</div>';
+  set.innerHTML='<div class="label" style="margin-top:6px;opacity:.8">'+(kind==="follow"?"↳ what you could say next after: ":"↳ replies to: ")+esc((forText||"").slice(0,40))+'</div>';
   for(const rep of replies){
     const d=document.createElement("div");d.className="reply";
     d.innerHTML='<div class="ja">'+esc(rep.ja||"")+'</div><div class="ro">'+esc(rep.romaji||"")+'</div><div class="mean"'+(dir?' dir="'+dir+'"':'')+'>'+esc(rep.meaning||"")+'</div>';
@@ -525,19 +531,23 @@ async function processSegment(blob,fSrc,fDst){
     const dstEl=el.querySelector(".dst");
     const pTrans=translate(text,segSrc,segDst,partial=>{mutateKeep(histList,()=>{dstEl.textContent=partial;});outText.textContent=partial;outText.dir=segDst==="he"?"rtl":"ltr";});
     const pRo=jaInput?romaji(text):pTrans.then(t=>romaji(t));
-    const pSug=jaInput?suggestions(text,(fDst==="he")?"Hebrew":"English"):Promise.resolve([]);
+    const meaningL=(segSrc==="he"||segDst==="he")?"Hebrew":"English";
+    const pSug=jaInput?suggestions(text,meaningL):pTrans.then(t=>followups(text,segSrc,t,meaningL));
     pTrans.then(t=>{mutateKeep(histList,()=>{el.querySelector(".dst").textContent=t;});pushCtx(segSrc,text,segDst,t);if(autoSpeak)speak(t,segDst);}).catch(e=>{el.querySelector(".dst").textContent="(translation failed)";showErr("Translation error — "+(e.message||""));});
     pRo.then(r=>{mutateKeep(histList,()=>{el.querySelector(".ro").textContent=r||"";});outRomaji.textContent=r||"";}).catch(()=>{});
     const meaningLang=(segSrc==="he"||segDst==="he")?"Hebrew":"English";
-    pSug.then(reps=>addSuggestionSet(reps,text,meaningLang==="Hebrew"?"rtl":"ltr")).catch(()=>{});
+    pSug.then(reps=>addSuggestionSet(reps,text,meaningLang==="Hebrew"?"rtl":"ltr",jaInput?"reply":"follow")).catch(()=>{});
   }catch(e){el.remove();showErr("Simultaneous error: "+(e.message||"unknown"));}
 }
 
-/* ================= CAMERA (OCR + vision fallback + freeze) ================= */
+/* ================= CAMERA v2: OCR/vision + Lens-style patches + motion tracking ================= */
 const camBox=$("camBox"),camVideo=$("camVideo"),camOverlay=$("camOverlay"),camStatus=$("camStatus"),camZoomEl=$("camZoom");
-let camStream=null,camTimer=null,camBusy=false,camScanCount=0,camZoomF=1,ocrWorker=null,ocrReady=false,ocrLoading=false,lastFrameSig=null,frozen=false;
+let camStream=null,camTimer=null,camBusy=false,camScanCount=0,camZoomF=1,ocrWorker=null,ocrReady=false,ocrLoading=false;
+let lockRef=null,locked=false,trackRAF=null,lastTrackT=0,lockDx=0,lockDy=0,lostFrames=0,needRescan=true;
 const camCache={};
-camZoomEl.addEventListener("input",()=>{camZoomF=parseFloat(camZoomEl.value)||1;$("camZoomVal").textContent=camZoomF.toFixed(1)+"×";camVideo.style.transform="scale("+camZoomF+")";camVideo.style.transformOrigin="center center";camOverlay.innerHTML="";frozen=false;lastFrameSig=null;});
+const TW=64,TH=48; // tracking resolution
+
+camZoomEl.addEventListener("input",()=>{camZoomF=parseFloat(camZoomEl.value)||1;$("camZoomVal").textContent=camZoomF.toFixed(1)+"×";camVideo.style.transform="scale("+camZoomF+")";camVideo.style.transformOrigin="center center";unlock();});
 function loadScript(src){return new Promise((res,rej)=>{const t=document.createElement("script");t.src=src;t.onload=res;t.onerror=()=>rej(new Error("failed to load "+src));document.head.appendChild(t);});}
 async function initOcr(){
   if(ocrReady||ocrLoading)return;ocrLoading=true;camStatus.textContent="Loading text-recognition engine (first time only, ~15 MB)…";
@@ -549,74 +559,140 @@ $("camBtn").onclick=async()=>{
   clearErr();if(!keyCheck())return;
   if(camStream){$("camStop").onclick();return;}
   if(simulOn)stopSimul();
-  try{camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"},audio:false});}catch(e){showErr("Camera permission denied or unavailable.");return;}
-  camVideo.srcObject=camStream;camBox.style.display="";camOverlay.innerHTML="";camScanCount=0;frozen=false;lastFrameSig=null;$("camBtn").classList.add("on");
-  initOcr();camTimer=setInterval(camScan,3000);
+  try{camStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment",width:{ideal:1280}},audio:false});}catch(e){showErr("Camera permission denied or unavailable.");return;}
+  camVideo.srcObject=camStream;camBox.style.display="";camOverlay.innerHTML="";camScanCount=0;unlock();$("camBtn").classList.add("on");
+  initOcr();camTimer=setInterval(camScan,1500);trackLoop();
 };
-$("camStop").onclick=()=>{clearInterval(camTimer);camTimer=null;if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;}camBox.style.display="none";camOverlay.innerHTML="";$("camBtn").classList.remove("on");};
-function frameSignature(cw,ch,cx,cy){const t=document.createElement("canvas");t.width=16;t.height=16;const g=t.getContext("2d");g.drawImage(camVideo,cx,cy,cw,ch,0,0,16,16);const d=g.getImageData(0,0,16,16).data;const sig=new Array(256);for(let i=0;i<256;i++)sig[i]=(d[i*4]*0.299+d[i*4+1]*0.587+d[i*4+2]*0.114)|0;return sig;}
-function frameDiff(a,b){if(!a||!b)return 1;let s=0;for(let i=0;i<256;i++)s+=Math.abs(a[i]-b[i]);return s/(256*255);}
-function placeBox(en,x,y,bw,bh,bg,fg){
-  const d=document.createElement("div");
-  d.style.cssText="position:absolute;left:"+x+"%;top:"+y+"%;width:"+bw+"%;height:"+bh+"%;background:"+bg+";color:"+fg+";display:flex;align-items:center;justify-content:center;text-align:center;font-weight:800;line-height:1.05;overflow:hidden;white-space:nowrap;border-radius:4px;padding:1px 4px";
-  d.textContent=en;camOverlay.appendChild(d);
-  requestAnimationFrame(()=>{let fs=Math.max(9,d.clientHeight*0.72);d.style.fontSize=fs+"px";while(fs>8&&(d.scrollWidth>d.clientWidth||d.scrollHeight>d.clientHeight)){fs-=1;d.style.fontSize=fs+"px";}});
+$("camStop").onclick=()=>{clearInterval(camTimer);camTimer=null;if(trackRAF)cancelAnimationFrame(trackRAF);trackRAF=null;if(camStream){camStream.getTracks().forEach(t=>t.stop());camStream=null;}camBox.style.display="none";camOverlay.innerHTML="";$("camBtn").classList.remove("on");};
+
+function crop(){const w=camVideo.videoWidth,h=camVideo.videoHeight;const cw=w/camZoomF,ch=h/camZoomF;return{w,h,cw,ch,cx:(w-cw)/2,cy:(h-ch)/2};}
+function grayFrame(){
+  const c=crop();if(!c.w)return null;
+  const t=document.createElement("canvas");t.width=TW;t.height=TH;const g=t.getContext("2d");
+  g.drawImage(camVideo,c.cx,c.cy,c.cw,c.ch,0,0,TW,TH);
+  const d=g.getImageData(0,0,TW,TH).data,out=new Float32Array(TW*TH);let mean=0;
+  for(let i=0;i<TW*TH;i++){out[i]=d[i*4]*0.299+d[i*4+1]*0.587+d[i*4+2]*0.114;mean+=out[i];}
+  mean/=TW*TH;for(let i=0;i<TW*TH;i++)out[i]-=mean; // brightness-invariant
+  return out;
 }
+function sad(a,b,dx,dy){ // sum abs diff of overlap, normalized per pixel
+  let s=0,n=0;
+  const x0=Math.max(0,dx),x1=Math.min(TW,TW+dx),y0=Math.max(0,dy),y1=Math.min(TH,TH+dy);
+  for(let y=y0;y<y1;y++){const ra=y*TW,rb=(y-dy)*TW;for(let x=x0;x<x1;x++){s+=Math.abs(a[ra+x]-b[rb+x-dx]);n++;}}
+  return n?s/n:1e9;
+}
+function estimateShift(ref,cur){ // returns {dx,dy,score} in tracking px; coarse-to-fine search
+  let best={dx:0,dy:0,v:1e9};
+  for(let dy=-10;dy<=10;dy+=2)for(let dx=-12;dx<=12;dx+=2){const v=sad(cur,ref,dx,dy);if(v<best.v)best={dx,dy,v};}
+  const c=best;for(let dy=c.dy-1;dy<=c.dy+1;dy++)for(let dx=c.dx-1;dx<=c.dx+1;dx++){const v=sad(cur,ref,dx,dy);if(v<best.v)best={dx,dy,v};}
+  return best;
+}
+function unlock(){locked=false;lockRef=null;lockDx=lockDy=0;lostFrames=0;needRescan=true;camOverlay.style.transform="";}
+function trackLoop(){
+  trackRAF=requestAnimationFrame(trackLoop);
+  const now=performance.now();if(now-lastTrackT<66)return;lastTrackT=now; // ~15 fps
+  if(!camStream||!locked||!lockRef)return;
+  const cur=grayFrame();if(!cur)return;
+  const m=estimateShift(lockRef,cur);
+  // score: how well the aligned frames match (0 = identical)
+  if(m.v>28){lostFrames++;if(lostFrames>4){unlock();camStatus.textContent="Scene changed — rescanning…";camScan();}return;}
+  lostFrames=0;lockDx=m.dx;lockDy=m.dy;
+  const W=camVideo.clientWidth,H=camVideo.clientHeight;
+  camOverlay.style.transform="translate("+(m.dx/TW*W)+"px,"+(m.dy/TH*H)+"px)";
+  // if drifted near the search edge, re-lock so tracking never saturates
+  if(Math.abs(m.dx)>=10||Math.abs(m.dy)>=8){unlock();camScan();}
+}
+
+/* ---- colors: separate background vs text color inside a box (2-cluster on luminance) ---- */
+function boxColors(g,x0,y0,x1,y1,W,H){
+  x0=Math.max(0,x0|0);y0=Math.max(0,y0|0);x1=Math.min(W,x1|0);y1=Math.min(H,y1|0);
+  if(x1-x0<2||y1-y0<2)return{bg:"rgb(235,235,235)",fg:"#111"};
+  const d=g.getImageData(x0,y0,x1-x0,y1-y0).data,n=d.length/4;
+  const lum=new Float32Array(n);let lo=255,hi=0;
+  for(let i=0;i<n;i++){const l=d[i*4]*0.299+d[i*4+1]*0.587+d[i*4+2]*0.114;lum[i]=l;if(l<lo)lo=l;if(l>hi)hi=l;}
+  const thr=(lo+hi)/2; // simple split; refine once (2-means)
+  let t=thr;for(let it=0;it<3;it++){let sa=0,na=0,sb=0,nb=0;for(let i=0;i<n;i++){if(lum[i]<t){sa+=lum[i];na++;}else{sb+=lum[i];nb++;}}if(!na||!nb)break;t=(sa/na+sb/nb)/2;}
+  let A=[0,0,0,0],B=[0,0,0,0];
+  for(let i=0;i<n;i++){const k=lum[i]<t?A:B;k[0]+=d[i*4];k[1]+=d[i*4+1];k[2]+=d[i*4+2];k[3]++;}
+  const big=A[3]>=B[3]?A:B,small=A[3]>=B[3]?B:A;
+  const rgb=k=>k[3]?"rgb("+Math.round(k[0]/k[3])+","+Math.round(k[1]/k[3])+","+Math.round(k[2]/k[3])+")":"rgb(235,235,235)";
+  const bg=rgb(big);
+  let fg=small[3]>n*0.04?rgb(small):null; // real text cluster exists
+  if(!fg){const l=big[3]?(big[0]*0.299+big[1]*0.587+big[2]*0.114)/big[3]:200;fg=l>140?"#111":"#fff";}
+  return{bg,fg};
+}
+function placeBox(en,xPct,yPct,wPct,hPct,bg,fg){
+  const d=document.createElement("div");
+  const vertical=hPct>wPct*1.6&&en.length>3;
+  d.style.cssText="position:absolute;left:"+xPct+"%;top:"+yPct+"%;width:"+wPct+"%;height:"+hPct+"%;background:"+bg+";color:"+fg+";display:flex;align-items:center;justify-content:center;text-align:center;font-weight:800;line-height:1.05;overflow:hidden;border-radius:3px;padding:1px 3px;"+(vertical?"writing-mode:vertical-rl;":"white-space:normal;");
+  d.textContent=en;camOverlay.appendChild(d);
+  requestAnimationFrame(()=>{ // fit: binary search font size, wrapping allowed
+    let lo=7,hi=Math.max(9,(vertical?d.clientWidth:d.clientHeight)*0.8),best=lo;
+    for(let k=0;k<7;k++){const mid=(lo+hi)/2;d.style.fontSize=mid+"px";if(d.scrollWidth<=d.clientWidth+1&&d.scrollHeight<=d.clientHeight+1){best=mid;lo=mid;}else hi=mid;}
+    d.style.fontSize=best+"px";
+  });
+}
+
 async function camScan(){
   if(camBusy||!camStream||!ocrReady)return;
-  const w=camVideo.videoWidth,h=camVideo.videoHeight;if(!w)return;
-  const cw=w/camZoomF,ch=h/camZoomF,cx=(w-cw)/2,cy=(h-ch)/2;
-  const sig=frameSignature(cw,ch,cx,cy);const diff=frameDiff(lastFrameSig,sig);
-  if(frozen&&diff<0.06)return; if(diff>=0.06)frozen=false; lastFrameSig=sig;
+  if(locked&&!needRescan)return;
+  const c=crop();if(!c.w)return;
   camBusy=true;camScanCount++;camStatus.textContent="Scanning… ("+camScanCount+")";
   try{
-    const c=document.createElement("canvas");const sc=Math.min(1,1280/Math.max(cw,ch));c.width=Math.round(cw*sc);c.height=Math.round(ch*sc);
-    const g=c.getContext("2d");g.drawImage(camVideo,cx,cy,cw,ch,0,0,c.width,c.height);
-    const oc=document.createElement("canvas");oc.width=c.width;oc.height=c.height;const og=oc.getContext("2d");og.filter="grayscale(1) contrast(1.8) brightness(1.05)";og.drawImage(c,0,0);
+    const cv=document.createElement("canvas");const sc=Math.min(1,1280/Math.max(c.cw,c.ch));cv.width=Math.round(c.cw*sc);cv.height=Math.round(c.ch*sc);
+    const g=cv.getContext("2d");g.drawImage(camVideo,c.cx,c.cy,c.cw,c.ch,0,0,cv.width,cv.height);
+    const refGray=grayFrame(); // reference for tracking, captured with the analyzed frame
+    const oc=document.createElement("canvas");oc.width=cv.width;oc.height=cv.height;const og=oc.getContext("2d");og.filter="grayscale(1) contrast(1.8) brightness(1.05)";og.drawImage(cv,0,0);
     const res=await ocrWorker.recognize(oc);
     const lines=(res.data.lines||[]).map(l=>({text:(l.text||"").trim().replace(/\s+/g,""),conf:l.confidence,bbox:l.bbox}))
       .filter(l=>l.conf>55&&(l.text.match(/[\u3040-\u30ff\u4e00-\u9fff]/g)||[]).length>=2);
     const avgConf=lines.length?lines.reduce((a,l)=>a+l.conf,0)/lines.length:0;
-    if(lines.length<2||avgConf<65){camStatus.textContent="Stylized text — using AI vision ("+camScanCount+")…";await visionFallback(c);camBusy=false;return;}
-    const unknown=[...new Set(lines.map(l=>l.text))].filter(t=>!(t in camCache));
-    if(unknown.length){
-      const arr=await aiJSON('OCR lines from Japanese signs (may contain small OCR errors — infer intended text). Translate each to short natural English. JSON: {"t":["..."]} same order.\n'+JSON.stringify(unknown),500);
-      unknown.forEach((t,k)=>{camCache[t]=(arr&&Array.isArray(arr.t)&&arr.t[k])||"";});
+    let placed=0;
+    if(lines.length<2||avgConf<65){
+      camStatus.textContent="Stylized text — using AI vision ("+camScanCount+")…";
+      placed=await visionFallback(cv,g);
+    }else{
+      const unknown=[...new Set(lines.map(l=>l.text))].filter(t=>!(t in camCache));
+      if(unknown.length){
+        const arr=await aiJSON('These lines were OCR-read from Japanese signs, menus or labels (may contain small OCR errors — infer the intended text). Translate each into short natural English as it would appear on an English sign. JSON: {"t":["..."]} same order.\n'+JSON.stringify(unknown),500,"gpt-4o");
+        unknown.forEach((t,k)=>{camCache[t]=(arr&&Array.isArray(arr.t)&&arr.t[k])||"";});
+      }
+      camOverlay.innerHTML="";camOverlay.style.transform="";
+      for(const l of lines){
+        const en=camCache[l.text];if(!en)continue;const b=l.bbox;
+        const col=boxColors(g,b.x0-2,b.y0-2,b.x1+2,b.y1+2,cv.width,cv.height);
+        placeBox(en,b.x0/cv.width*100-0.4,b.y0/cv.height*100-0.3,(b.x1-b.x0)/cv.width*100+0.8,(b.y1-b.y0)/cv.height*100+0.6,col.bg,col.fg);placed++;
+      }
+      if(placed)camStatus.textContent=placed+" line(s) — exact positions, tracking";
     }
-    camOverlay.innerHTML="";let n=0;
-    for(const l of lines){
-      const en=camCache[l.text];if(!en)continue;
-      let r=0,gg=0,b=0,cnt=0;const bx=l.bbox;
-      try{const strips=[g.getImageData(Math.max(0,bx.x0-2),Math.max(0,bx.y0-2),Math.min(c.width-bx.x0,bx.x1-bx.x0+4),2),g.getImageData(Math.max(0,bx.x0-2),Math.min(c.height-3,bx.y1),Math.min(c.width-bx.x0,bx.x1-bx.x0+4),2)];for(const st of strips)for(let k=0;k<st.data.length;k+=4){r+=st.data[k];gg+=st.data[k+1];b+=st.data[k+2];cnt++;}}catch(e){}
-      if(cnt){r=Math.round(r/cnt);gg=Math.round(gg/cnt);b=Math.round(b/cnt);}else{r=gg=b=235;}
-      const lum=0.299*r+0.587*gg+0.114*b;
-      placeBox(en,bx.x0/c.width*100-0.5,bx.y0/c.height*100-0.4,(bx.x1-bx.x0)/c.width*100+1,(bx.y1-bx.y0)/c.height*100+0.8,"rgb("+r+","+gg+","+b+")",lum>140?"#111":"#fff");n++;
-    }
-    if(n){frozen=true;camStatus.textContent=n+" line(s) — exact positions (holding)";}
+    if(placed){locked=true;needRescan=false;lockRef=refGray;lostFrames=0;}
   }catch(e){camStatus.textContent="Camera error: "+(e.message||"unknown");}
   camBusy=false;
 }
-async function visionFallback(c){
+async function visionFallback(cv,g){
   try{
-    const gc2=document.createElement("canvas");gc2.width=c.width;gc2.height=c.height;const g=gc2.getContext("2d");g.drawImage(c,0,0);
-    g.strokeStyle="rgba(255,0,0,0.5)";g.lineWidth=1;g.fillStyle="rgba(255,0,0,0.9)";g.font=Math.round(c.height*0.025)+"px sans-serif";
-    for(let i=1;i<10;i++){const gx=c.width*i/10,gy=c.height*i/10;g.beginPath();g.moveTo(gx,0);g.lineTo(gx,c.height);g.stroke();g.beginPath();g.moveTo(0,gy);g.lineTo(c.width,gy);g.stroke();g.fillText((i/10).toFixed(1),gx+2,12);g.fillText((i/10).toFixed(1),2,gy-3);}
+    const gc2=document.createElement("canvas");gc2.width=cv.width;gc2.height=cv.height;const gg=gc2.getContext("2d");gg.drawImage(cv,0,0);
+    gg.strokeStyle="rgba(255,0,0,0.5)";gg.lineWidth=1;gg.fillStyle="rgba(255,0,0,0.9)";gg.font=Math.round(cv.height*0.025)+"px sans-serif";
+    for(let i=1;i<10;i++){const gx=cv.width*i/10,gy=cv.height*i/10;gg.beginPath();gg.moveTo(gx,0);gg.lineTo(gx,cv.height);gg.stroke();gg.beginPath();gg.moveTo(0,gy);gg.lineTo(cv.width,gy);gg.stroke();gg.fillText((i/10).toFixed(1),gx+2,12);gg.fillText((i/10).toFixed(1),2,gy-3);}
     const b64=gc2.toDataURL("image/jpeg",0.72).split(",")[1];
     const r=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key()},
-      body:JSON.stringify({model:"gpt-4o-mini",max_tokens:600,response_format:{type:"json_object"},messages:[{role:"user",content:[{type:"image_url",image_url:{url:"data:image/jpeg;base64,"+b64}},
-        {type:"text",text:'Red grid = coordinates (labels 0.1-0.9). Find each block of Japanese text and TRANSLATE it into ENGLISH ("en" = English words only, never Japanese characters). Box read off the grid. JSON: {"blocks":[{"en":"...","x":0.1,"y":0.2,"w":0.3,"h":0.08}]}'}]}]})});
-    if(!r.ok)return;
+      body:JSON.stringify({model:"gpt-4o",max_tokens:700,response_format:{type:"json_object"},messages:[{role:"user",content:[{type:"image_url",image_url:{url:"data:image/jpeg;base64,"+b64,detail:"high"}},
+        {type:"text",text:'A red coordinate grid is drawn on this photo (lines every 0.1, labels 0.1-0.9; x across the top, y down the left). Find every block of Japanese text (a heading, a line, a price, a label — group characters that clearly belong together). For each: translate into short natural ENGLISH as it would appear on an English sign ("en" must be English words only), and give its tight bounding box read from the grid: x,y top-left, w,h size, decimals 0-1. JSON: {"blocks":[{"en":"...","x":0.12,"y":0.20,"w":0.30,"h":0.08}]}'}]}]})});
+    if(!r.ok)return 0;
     const data=await r.json();
-    if(data.usage)addSpend((data.usage.prompt_tokens||0)*PRICE.mini_in+(data.usage.completion_tokens||0)*PRICE.mini_out);
-    let obj;try{obj=JSON.parse(stripFences(data.choices[0].message.content||""));}catch(e){return;}
-    let blocks=(Array.isArray(obj.blocks)?obj.blocks:[]).filter(b=>b.en);
-    const bad=blocks.filter(b=>JA_RE.test(b.en));
-    if(bad.length){const fix=await aiJSON('Translate each Japanese string to short natural English. JSON: {"t":["..."]} same order.\n'+JSON.stringify(bad.map(b=>b.en)),300);bad.forEach((b,k)=>{if(fix&&fix.t&&fix.t[k])b.en=fix.t[k];});blocks=blocks.filter(b=>!JA_RE.test(b.en));}
-    if(!blocks.length){camStatus.textContent="No Japanese text detected";return;}
-    camOverlay.innerHTML="";
-    for(const b of blocks){const x=Math.max(0,Math.min(1,+b.x||0))*100,y=Math.max(0,Math.min(1,+b.y||0))*100,bw=Math.max(0.06,Math.min(1,+b.w||0.3))*100,bh=Math.max(0.03,Math.min(1,+b.h||0.06))*100;placeBox(b.en,x,y,bw,bh,"rgba(10,12,20,.85)","#fff");}
-    frozen=true;camStatus.textContent=blocks.length+" block(s) — approximate (holding until you move)";
-  }catch(e){}
+    if(data.usage)addSpend((data.usage.prompt_tokens||0)*PRICE.o_in+(data.usage.completion_tokens||0)*PRICE.o_out);
+    let obj;try{obj=JSON.parse(stripFences(data.choices[0].message.content||""));}catch(e){return 0;}
+    let blocks=(Array.isArray(obj.blocks)?obj.blocks:[]).filter(b=>b.en&&!JA_RE.test(b.en));
+    if(!blocks.length){camStatus.textContent="No Japanese text detected";return 0;}
+    camOverlay.innerHTML="";camOverlay.style.transform="";
+    for(const b of blocks){
+      const x=Math.max(0,Math.min(1,+b.x||0)),y=Math.max(0,Math.min(1,+b.y||0)),bw=Math.max(0.06,Math.min(1-x,+b.w||0.3)),bh=Math.max(0.03,Math.min(1-y,+b.h||0.06));
+      const col=boxColors(g,x*cv.width,y*cv.height,(x+bw)*cv.width,(y+bh)*cv.height,cv.width,cv.height);
+      placeBox(b.en,x*100,y*100,bw*100,bh*100,col.bg,col.fg);
+    }
+    camStatus.textContent=blocks.length+" block(s) — approximate, tracking";
+    return blocks.length;
+  }catch(e){return 0;}
 }
 
 /* ================= PWA ================= */
