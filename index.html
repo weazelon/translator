@@ -80,7 +80,7 @@
 <div class="popup-wrap" id="popups"></div>
 <div class="app">
   <header>
-    <h1>Live Translator <small>v39</small></h1>
+    <h1>Live Translator <small>v40</small></h1>
     <div class="right"><button class="theme" id="themeBtn">🌙</button><div class="status" id="status">Ready</div></div>
   </header>
 
@@ -587,8 +587,13 @@ function estimateShift(ref,cur){ // returns {dx,dy,score} in tracking px; coarse
   const c=best;for(let dy=c.dy-1;dy<=c.dy+1;dy++)for(let dx=c.dx-1;dx<=c.dx+1;dx++){const v=sad(cur,ref,dx,dy);if(v<best.v)best={dx,dy,v};}
   return best;
 }
-let pendingRescan=false,scanGen=0,lastRefGray=null;
-function stale(){const cur=grayFrame();return !cur||!lastRefGray||estimateShift(lastRefGray,cur).v>22;}
+let pendingRescan=false,scanGen=0,lastRefGray=null,jitterBase=12,staleStreak=0;
+function changeThresh(){return Math.max(26,jitterBase*2.6);}
+function stale(){
+  if(staleStreak>=2)return false;              // never loop forever: after 2 discards, accept the result
+  const cur=grayFrame();if(!cur||!lastRefGray)return false;
+  return estimateShift(lastRefGray,cur).v>changeThresh();
+}
 function unlock(clear){locked=false;lockRef=null;lockDx=lockDy=0;lostFrames=0;needRescan=true;camOverlay.style.transform="";if(clear){camOverlay.innerHTML="";}}
 function trackLoop(){
   trackRAF=requestAnimationFrame(trackLoop);
@@ -597,7 +602,7 @@ function trackLoop(){
   const cur=grayFrame();if(!cur)return;
   const m=estimateShift(lockRef,cur);
   // score: how well the aligned frames match (0 = identical)
-  if(m.v>22){lostFrames++;if(lostFrames>2){unlock(true);camStatus.textContent="Scene changed — rescanning…";camScan();}return;}
+  if(m.v>changeThresh()){lostFrames++;if(lostFrames>3){unlock(true);camStatus.textContent="Scene changed — rescanning…";camScan();}return;}
   lostFrames=0;lockDx=m.dx;lockDy=m.dy;
   const W=camVideo.clientWidth,H=camVideo.clientHeight;
   camOverlay.style.transform="translate("+(m.dx/TW*W)+"px,"+(m.dy/TH*H)+"px)";
@@ -647,13 +652,15 @@ async function camScan(){
     const g=cv.getContext("2d");g.drawImage(camVideo,c.cx,c.cy,c.cw,c.ch,0,0,cv.width,cv.height);
     const refGray=grayFrame(); // reference for tracking, captured with the analyzed frame
     lastRefGray=refGray;
+    await new Promise(r=>setTimeout(r,90));
+    { const g2=grayFrame(); if(g2){const v=estimateShift(refGray,g2).v; jitterBase=jitterBase*0.6+v*0.4;} }
     const oc=document.createElement("canvas");oc.width=cv.width;oc.height=cv.height;const og=oc.getContext("2d");og.filter="grayscale(1) contrast(1.8) brightness(1.05)";og.drawImage(cv,0,0);
     const res=await ocrWorker.recognize(oc);
     const lines=(res.data.lines||[]).map(l=>({text:(l.text||"").trim().replace(/\s+/g,""),conf:l.confidence,bbox:l.bbox}))
       .filter(l=>l.conf>55&&(l.text.match(/[\u3040-\u30ff\u4e00-\u9fff]/g)||[]).length>=2);
     const avgConf=lines.length?lines.reduce((a,l)=>a+l.conf,0)/lines.length:0;
     let placed=0;
-    if(stale()){camBusy=false;pendingRescan=false;camStatus.textContent="Moved — rescanning…";camOverlay.innerHTML="";return camScan();}
+    if(stale()){staleStreak++;camBusy=false;pendingRescan=false;camStatus.textContent="Moved — rescanning…";camOverlay.innerHTML="";setTimeout(camScan,250);return;}
     if(lines.length<2||avgConf<65){
       camStatus.textContent="Stylized text — using AI vision ("+camScanCount+")…";
       placed=await visionFallback(cv,g);
@@ -663,7 +670,7 @@ async function camScan(){
         const arr=await aiJSON('These lines were OCR-read from Japanese signs, menus or labels (may contain small OCR errors — infer the intended text). Translate each into short natural English as it would appear on an English sign. JSON: {"t":["..."]} same order.\n'+JSON.stringify(unknown),400,"gpt-4o-mini");
         unknown.forEach((t,k)=>{camCache[t]=(arr&&Array.isArray(arr.t)&&arr.t[k])||"";});
       }
-      if(stale()){camBusy=false;camOverlay.innerHTML="";return camScan();}
+      if(stale()){staleStreak++;camBusy=false;camOverlay.innerHTML="";setTimeout(camScan,250);return;}
       camOverlay.innerHTML="";camOverlay.style.transform="";
       for(const l of lines){
         const en=camCache[l.text];if(!en)continue;const b=l.bbox;
@@ -672,7 +679,7 @@ async function camScan(){
       }
       if(placed)camStatus.textContent=placed+" line(s) — exact positions, tracking";
     }
-    if(placed){locked=true;needRescan=false;lockRef=refGray;lostFrames=0;}
+    if(placed){locked=true;needRescan=false;lockRef=refGray;lostFrames=0;staleStreak=0;}
   }catch(e){camStatus.textContent="Camera error: "+(e.message||"unknown");}
   camBusy=false;
   if(pendingRescan){pendingRescan=false;camScan();}
@@ -692,7 +699,7 @@ async function visionFallback(cv,g){
     let obj;try{obj=JSON.parse(stripFences(data.choices[0].message.content||""));}catch(e){return 0;}
     let blocks=(Array.isArray(obj.blocks)?obj.blocks:[]).filter(b=>b.en&&!JA_RE.test(b.en));
     if(!blocks.length){camStatus.textContent="No Japanese text detected";return 0;}
-    if(stale()){camOverlay.innerHTML="";pendingRescan=true;return 0;}
+    if(stale()){staleStreak++;camOverlay.innerHTML="";pendingRescan=true;return 0;}
     camOverlay.innerHTML="";camOverlay.style.transform="";
     for(const b of blocks){
       const x=Math.max(0,Math.min(1,+b.x||0)),y=Math.max(0,Math.min(1,+b.y||0)),bw=Math.max(0.06,Math.min(1-x,+b.w||0.3)),bh=Math.max(0.03,Math.min(1-y,+b.h||0.06));
