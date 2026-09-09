@@ -140,7 +140,7 @@
 
 <div class="app">
   <header>
-    <h1>Live Translator<small>v44</small></h1>
+    <h1>Live Translator<small>v45</small></h1>
     <div class="status" id="status">Ready</div>
     <button class="iconBtn" id="listenBtn" title="Listening settings">🎧</button>
     <button class="iconBtn" id="settingsBtn" title="Settings">⚙️</button>
@@ -197,6 +197,9 @@
         <button class="side" id="swapBtn">⇄</button>
         <select id="dstLang" style="margin:0"><option value="en">English</option><option value="ja" selected>日本語 Japanese</option><option value="he">עברית Hebrew</option></select>
       </div></div>
+    <div class="field"><div class="label">AI models</div>
+      <select id="modelGen"><option value="new" selected>GPT-5.6 Luna + Terra (newest, recommended)</option><option value="classic">Classic gpt-4o-mini + gpt-4o (fallback)</option></select>
+      <div class="hint">If translations ever fail after an OpenAI change, switch to Classic.</div></div>
     <div class="field"><div class="label">OpenAI API key</div><input type="password" id="oaiKey" placeholder="sk-..."><div class="hint">Stored on this device only.</div></div>
     <div class="field"><div class="label">Budget</div>
       <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><span>$</span><input type="number" id="budgetUsd" value="5" min="1" step="1" style="width:90px;margin:0"><span class="hint" id="usageLine" style="flex:1"></span><button class="side" id="usageReset">Reset</button></div></div>
@@ -269,7 +272,18 @@ $("oaiKey").addEventListener("change",()=>localStorage.setItem("lt_oai_key",$("o
 const key=()=>$("oaiKey").value.trim();
 function keyCheck(){if(!key()){showErr("No API key set. Open ⚙️ Settings and paste your OpenAI key.");return false;}return true;}
 
-const PRICE={mini_in:0.15/1e6,mini_out:0.60/1e6,o_in:2.5/1e6,o_out:10/1e6,stt_min:0.003};
+const MODELS={
+  new:    {fast:"gpt-5.6-luna", quality:"gpt-5.6-terra", stt:"gpt-transcribe", sttMin:0.0045},
+  classic:{fast:"gpt-4o-mini",  quality:"gpt-4o",        stt:"gpt-4o-mini-transcribe", sttMin:0.003}
+};
+const PRICE_TABLE={ // $ per token
+  "gpt-5.6-luna":{i:0.20/1e6,o:1.20/1e6},"gpt-5.6-terra":{i:2/1e6,o:12/1e6},"gpt-5.6-sol":{i:4/1e6,o:20/1e6},"gpt-6-astra":{i:10/1e6,o:50/1e6},
+  "gpt-4o-mini":{i:0.15/1e6,o:0.60/1e6},"gpt-4o":{i:2.5/1e6,o:10/1e6}
+};
+let modelGen=localStorage.getItem("lt_models")||"new";
+const M=()=>MODELS[modelGen];
+const isNewGen=m=>/^gpt-(5|6)/.test(m);
+const PRICE={stt_min:0.003};
 let spentUsd=parseFloat(localStorage.getItem("lt_spent")||"0"),warned80=false,warned95=false;
 const budget=()=>parseFloat($("budgetUsd").value)||5;
 function addSpend(u){
@@ -283,6 +297,17 @@ $("usageReset").onclick=()=>{spentUsd=0;warned80=warned95=false;localStorage.set
 const savedBudget=localStorage.getItem("lt_budget");if(savedBudget)$("budgetUsd").value=savedBudget;
 $("budgetUsd").addEventListener("change",()=>{localStorage.setItem("lt_budget",$("budgetUsd").value);warned80=warned95=false;updateUsageLine();});
 updateUsageLine();
+
+$("modelGen").value=modelGen;
+$("modelGen").onchange=()=>{modelGen=$("modelGen").value;localStorage.setItem("lt_models",modelGen);popup("net","MODELS","Now using "+M().fast+" / "+M().quality);};
+function priceOf(model,usage){const p=PRICE_TABLE[model]||PRICE_TABLE["gpt-4o-mini"];return (usage.prompt_tokens||0)*p.i+(usage.completion_tokens||0)*p.o;}
+// build a Chat Completions body that is valid for both classic and 5.x/6 models
+function chatBody(model,messages,maxTokens,extra){
+  const b=Object.assign({model,messages},extra||{});
+  if(isNewGen(model)){b.max_completion_tokens=maxTokens;b.reasoning_effort="none";}
+  else{b.max_tokens=maxTokens;b.temperature=0.3;}
+  return b;
+}
 
 /* ================= OpenAI ================= */
 let register=localStorage.getItem("lt_register")||"casual";
@@ -335,17 +360,19 @@ const ctxBlock=()=>{
   return (words?"Proper names/terms to keep as-is: "+words+".\n":"")
     +(convoCtx.length?"Recent conversation for context (do not translate this):\n"+convoCtx.join("\n")+"\n\n":"");
 };
+function resolveModel(m){ if(!m||m==="fast")return M().fast; if(m==="quality")return M().quality; if(m==="gpt-4o")return M().quality; if(m==="gpt-4o-mini")return M().fast; return m; }
 async function ai(content,maxTokens,model,jsonMode){
-  const body={model:model||"gpt-4o-mini",max_tokens:maxTokens||300,temperature:0.3,messages:[{role:"user",content}]};
-  if(jsonMode)body.response_format={type:"json_object"};
+  model=resolveModel(model);
+  const body=chatBody(model,[{role:"user",content}],maxTokens||300,jsonMode?{response_format:{type:"json_object"}}:null);
   const r=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key()},body:JSON.stringify(body)});
   if(!r.ok){const t=await r.text().catch(()=>"");throw new Error("API "+r.status+(t?": "+t.slice(0,160):""));}
   const d=await r.json();
-  if(d.usage){const o=(model==="gpt-4o");addSpend((d.usage.prompt_tokens||0)*(o?PRICE.o_in:PRICE.mini_in)+(d.usage.completion_tokens||0)*(o?PRICE.o_out:PRICE.mini_out));}
+  if(d.usage)addSpend(priceOf(model,d.usage));
   return (d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content||"").trim();
 }
 async function aiStream(content,maxTokens,model,onDelta){
-  const body={model:model||"gpt-4o-mini",max_tokens:maxTokens||300,temperature:0.3,stream:true,stream_options:{include_usage:true},messages:[{role:"user",content}]};
+  model=resolveModel(model);
+  const body=chatBody(model,[{role:"user",content}],maxTokens||300,{stream:true,stream_options:{include_usage:true}});
   const r=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key()},body:JSON.stringify(body)});
   if(!r.ok){const t=await r.text().catch(()=>"");throw new Error("API "+r.status+(t?": "+t.slice(0,160):""));}
   const reader=r.body.getReader(),dec=new TextDecoder();let buf="",full="";
@@ -361,7 +388,7 @@ async function aiStream(content,maxTokens,model,onDelta){
         const j=JSON.parse(data);
         const d=j.choices&&j.choices[0]&&j.choices[0].delta&&j.choices[0].delta.content;
         if(d){full+=d;if(onDelta)onDelta(full);}
-        if(j.usage){const o=(model==="gpt-4o");addSpend((j.usage.prompt_tokens||0)*(o?PRICE.o_in:PRICE.mini_in)+(j.usage.completion_tokens||0)*(o?PRICE.o_out:PRICE.mini_out));}
+        if(j.usage)addSpend(priceOf(model,j.usage));
       }catch(e){}
     }
   }
@@ -549,12 +576,12 @@ function wavBlob(chunks,sr){
 }
 const JUNK=["thank you","thanks for watching","ご視聴ありがとうございました","字幕","subtitles","subscribe"];
 async function transcribe(blob,lang){
-  const fd=new FormData();fd.append("file",blob,"seg.wav");fd.append("model","gpt-4o-mini-transcribe");
+  const fd=new FormData();fd.append("file",blob,"seg.wav");fd.append("model",M().stt);
   if(lang)fd.append("language",lang);
   fd.append("prompt",listenPrompt());
   const wr=await fetch("https://api.openai.com/v1/audio/transcriptions",{method:"POST",headers:{"Authorization":"Bearer "+key()},body:fd});
   if(!wr.ok){const t=await wr.text().catch(()=>"");throw new Error("API "+wr.status+(t?": "+t.slice(0,120):""));}
-  addSpend(((blob.size-44)/(TARGET_SR*2))/60*PRICE.stt_min);
+  addSpend(((blob.size-44)/(TARGET_SR*2))/60*M().sttMin);
   return ((await wr.json()).text||"").trim();
 }
 async function processSegment(blob,fSrc,fDst){
@@ -734,10 +761,10 @@ function placeBox(en,x,y,w,h,bg,fg){
 
 // streaming JSON: place each block as soon as it is fully received
 async function visionStream(b64,onBlock){
-  const model=lensHQ?"gpt-4o":"gpt-4o-mini";
-  const body={model,max_tokens:700,temperature:0.1,stream:true,stream_options:{include_usage:true},messages:[{role:"user",content:[
+  const model=lensHQ?M().quality:M().fast;
+  const body=chatBody(model,[{role:"user",content:[
     {type:"image_url",image_url:{url:"data:image/jpeg;base64,"+b64,detail:lensHQ?"high":"auto"}},
-    {type:"text",text:'A red grid is drawn on this photo: lines every 0.1, labels 0.1-0.9 (x across the top, y down the left). Find every piece of Japanese text. Treat each visually separate line as its own block (each menu line, each heading, each price, each label separately — do NOT merge different lines). For each block give an ENGLISH translation as it would appear on an English sign ("en": English words only, never Japanese), and its tight bounding box read from the grid: x,y = top-left, w,h = size, decimals 0-1. Output ONLY a JSON array, one object per line, like:\n[{"en":"...","x":0.12,"y":0.20,"w":0.30,"h":0.06},\n{"en":"...","x":0.12,"y":0.28,"w":0.25,"h":0.06}]\nIf there is no Japanese text output []'}]}]};
+    {type:"text",text:'A red grid is drawn on this photo: lines every 0.1, labels 0.1-0.9 (x across the top, y down the left). Find every piece of Japanese text. Treat each visually separate line as its own block (each menu line, each heading, each price, each label separately — do NOT merge different lines). For each block give an ENGLISH translation as it would appear on an English sign ("en": English words only, never Japanese), and its tight bounding box read from the grid: x,y = top-left, w,h = size, decimals 0-1. Output ONLY a JSON array, one object per line, like:\n[{"en":"...","x":0.12,"y":0.20,"w":0.30,"h":0.06},\n{"en":"...","x":0.12,"y":0.28,"w":0.25,"h":0.06}]\nIf there is no Japanese text output []'}]}],700,{stream:true,stream_options:{include_usage:true}});
   const r=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key()},body:JSON.stringify(body)});
   if(!r.ok){const t=await r.text().catch(()=>"");throw new Error("API "+r.status+(t?": "+t.slice(0,120):""));}
   const reader=r.body.getReader(),dec=new TextDecoder();let buf="",acc="",seen=0,count=0;
@@ -748,7 +775,7 @@ async function visionStream(b64,onBlock){
       const line=buf.slice(0,idx).trim();buf=buf.slice(idx+1);
       if(!line.startsWith("data:"))continue;const data=line.slice(5).trim();if(data==="[DONE]")continue;
       try{const j=JSON.parse(data);const d=j.choices&&j.choices[0]&&j.choices[0].delta&&j.choices[0].delta.content;if(d)acc+=d;
-        if(j.usage){const o=model==="gpt-4o";addSpend((j.usage.prompt_tokens||0)*(o?PRICE.o_in:PRICE.mini_in)+(j.usage.completion_tokens||0)*(o?PRICE.o_out:PRICE.mini_out));}
+        if(j.usage)addSpend(priceOf(model,j.usage));
       }catch(e){}
       // extract complete {...} objects incrementally
       const re=/\{[^{}]*\}/g;re.lastIndex=seen;let m;
