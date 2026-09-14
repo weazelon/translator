@@ -140,7 +140,7 @@
 
 <div class="app">
   <header>
-    <h1>Live Translator<small>v45</small></h1>
+    <h1>Live Translator<small>v46</small></h1>
     <div class="status" id="status">Ready</div>
     <button class="iconBtn" id="listenBtn" title="Listening settings">🎧</button>
     <button class="iconBtn" id="settingsBtn" title="Settings">⚙️</button>
@@ -302,12 +302,28 @@ $("modelGen").value=modelGen;
 $("modelGen").onchange=()=>{modelGen=$("modelGen").value;localStorage.setItem("lt_models",modelGen);popup("net","MODELS","Now using "+M().fast+" / "+M().quality);};
 function priceOf(model,usage){const p=PRICE_TABLE[model]||PRICE_TABLE["gpt-4o-mini"];return (usage.prompt_tokens||0)*p.i+(usage.completion_tokens||0)*p.o;}
 // build a Chat Completions body that is valid for both classic and 5.x/6 models
+let effortMode=localStorage.getItem("lt_effort")||"none"; // "none" → fallback "low" → "omit"
 function chatBody(model,messages,maxTokens,extra){
   const b=Object.assign({model,messages},extra||{});
-  if(isNewGen(model)){b.max_completion_tokens=maxTokens;b.reasoning_effort="none";}
+  if(isNewGen(model)){b.max_completion_tokens=maxTokens;if(effortMode!=="omit")b.reasoning_effort=effortMode;}
   else{b.max_tokens=maxTokens;b.temperature=0.3;}
   return b;
 }
+async function postChat(body){
+  const t0=performance.now();
+  let r=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key()},body:JSON.stringify(body)});
+  if(r.status===400&&isNewGen(body.model)){
+    const t=await r.clone().text().catch(()=>"");
+    if(/reasoning_effort|max_completion_tokens|temperature/i.test(t)){
+      effortMode=effortMode==="none"?"low":"omit";localStorage.setItem("lt_effort",effortMode);
+      if(effortMode==="omit")delete body.reasoning_effort; else body.reasoning_effort=effortMode;
+      r=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key()},body:JSON.stringify(body)});
+    }
+  }
+  r._t0=t0;return r;
+}
+let lastLatency=0;
+function noteLatency(t0){lastLatency=Math.round(performance.now()-t0);const st=$("status");if(st&&!st.classList.contains("live"))st.textContent="Ready · "+(lastLatency/1000).toFixed(1)+"s";}
 
 /* ================= OpenAI ================= */
 let register=localStorage.getItem("lt_register")||"casual";
@@ -364,18 +380,18 @@ function resolveModel(m){ if(!m||m==="fast")return M().fast; if(m==="quality")re
 async function ai(content,maxTokens,model,jsonMode){
   model=resolveModel(model);
   const body=chatBody(model,[{role:"user",content}],maxTokens||300,jsonMode?{response_format:{type:"json_object"}}:null);
-  const r=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key()},body:JSON.stringify(body)});
+  const r=await postChat(body);
   if(!r.ok){const t=await r.text().catch(()=>"");throw new Error("API "+r.status+(t?": "+t.slice(0,160):""));}
-  const d=await r.json();
+  const d=await r.json();noteLatency(r._t0);
   if(d.usage)addSpend(priceOf(model,d.usage));
   return (d.choices&&d.choices[0]&&d.choices[0].message&&d.choices[0].message.content||"").trim();
 }
 async function aiStream(content,maxTokens,model,onDelta){
   model=resolveModel(model);
   const body=chatBody(model,[{role:"user",content}],maxTokens||300,{stream:true,stream_options:{include_usage:true}});
-  const r=await fetch("https://api.openai.com/v1/chat/completions",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key()},body:JSON.stringify(body)});
+  const r=await postChat(body);
   if(!r.ok){const t=await r.text().catch(()=>"");throw new Error("API "+r.status+(t?": "+t.slice(0,160):""));}
-  const reader=r.body.getReader(),dec=new TextDecoder();let buf="",full="";
+  const reader=r.body.getReader(),dec=new TextDecoder();let buf="",full="";let first=true;
   while(true){
     const {done,value}=await reader.read();if(done)break;
     buf+=dec.decode(value,{stream:true});
@@ -387,7 +403,7 @@ async function aiStream(content,maxTokens,model,onDelta){
       try{
         const j=JSON.parse(data);
         const d=j.choices&&j.choices[0]&&j.choices[0].delta&&j.choices[0].delta.content;
-        if(d){full+=d;if(onDelta)onDelta(full);}
+        if(d){full+=d;if(first){first=false;noteLatency(r._t0);}if(onDelta)onDelta(full);}
         if(j.usage)addSpend(priceOf(model,j.usage));
       }catch(e){}
     }
@@ -626,54 +642,38 @@ async function typedGo(){
   const text=typeIn.value.trim();if(!text)return;
   if(!keyCheck())return;
   typeIn.value="";typeGo.classList.remove("show");typeIn.style.height="auto";typeIn.blur();
-  const src=JA_RE.test(text)?"ja":HE_RE.test(text)?"he":"en";
-  const dst=src==="ja"?"en":"ja";
-  const el=pushTurn(src==="en"?"a":"b",text,"…","",src);
-  el.querySelector(".who").textContent="⌨️ "+LANG[src].label+" (typed)";
+  const el=pushTurn("a",text,"…","","…");
+  el.querySelector(".who").textContent="⌨️ typed";
   const kana=document.createElement("div");kana.className="kana";
   const note=document.createElement("div");note.className="note";
   el.appendChild(kana);el.appendChild(note);
   try{
-    let o;
-    if(src==="ja"){
-      o=await aiJSON(ctxBlock()+'The user (a learner who knows hiragana but not kanji or katakana) typed this Japanese: "'+text.replace(/"/g,"\'")+'"\n'
-        +'1) Correct it into natural Japanese a native would say ('+(register==="casual"?"casual":"polite")+'). Keep the meaning. If it is already natural, keep it.\n'
-        +'2) Give the corrected version in hiragana only (no kanji, no katakana; convert katakana words to hiragana too).\n'
-        +'3) Hepburn romaji of the corrected version.\n4) English translation.\n5) One short English note on what was fixed (empty if nothing).\n'
-        +'JSON: {"ja":"corrected Japanese","kana":"hiragana only","romaji":"...","en":"...","note":"..."}',400,"gpt-4o");
-      if(!o)throw new Error("empty");
-      mutateKeep(histList,()=>{
-        el.querySelector(".src").textContent=o.ja||text;
-        el.querySelector(".ro").textContent=o.romaji||"";
-        el.querySelector(".dst").textContent=o.en||"";
-        kana.textContent=o.kana?"かな: "+o.kana:"";
-        const w=el.querySelector(".who"),sr=el.querySelector(".src"),ds=el.querySelector(".dst"),ro=el.querySelector(".ro");
+    const o=await aiJSON(ctxBlock()+'The user typed: "'+text.replace(/"/g,"'")+'"\n'
+      +'First decide what it is: "ja" (Japanese in kana/kanji), "romaji" (Japanese written in Latin letters, e.g. "kekkon", "eki wa doko"), "en" (English) or "he" (Hebrew). Latin text that reads as Japanese words is romaji, not English.\n'
+      +'If ja or romaji: the user is a learner who knows hiragana only. Correct it into natural Japanese ('+(register==="casual"?"casual":"polite")+') keeping the meaning (keep as is if already natural), then give: kana = hiragana-only version, romaji = Hepburn, en = English meaning, note = one short line on what was fixed ("" if nothing).\n'
+      +'If en or he: translate into Japanese. '+nativeJa()+' Give ja, kana (hiragana only), romaji, en = the original text, note = "".\n'
+      +'JSON: {"input":"ja|romaji|en|he","ja":"...","kana":"...","romaji":"...","en":"...","note":"..."}',450,"quality");
+    if(!o||!o.ja)throw new Error("empty response");
+    const jaIn=o.input==="ja"||o.input==="romaji";
+    mutateKeep(histList,()=>{
+      el.className="turn "+(jaIn?"b":"a");
+      el.querySelector(".who").textContent="⌨️ "+(o.input==="romaji"?"romaji":o.input==="ja"?"日本語":o.input==="he"?"עברית":"English")+" (typed)";
+      const w=el.querySelector(".who"),sr=el.querySelector(".src"),ds=el.querySelector(".dst"),ro=el.querySelector(".ro");
+      ro.textContent=o.romaji||"";kana.textContent=o.kana?"かな: "+o.kana:"";note.textContent=o.note?"✎ "+o.note:"";
+      if(jaIn){ // English meaning first, then corrected Japanese, romaji, kana, note (+ what you typed)
+        ds.textContent=o.en||"";sr.textContent=o.ja;
+        if(o.ja!==text)note.textContent=(note.textContent?note.textContent+"  ·  ":"")+"you typed: "+text;
         el.append(w,ds,sr,ro,kana,note);
-        note.textContent=o.note?"✎ "+o.note:"";
-        if(o.ja&&o.ja!==text)note.textContent=(note.textContent?note.textContent+"  ·  ":"")+"you typed: "+text;
-      });
-      pushCtx("ja",o.ja||text,"en",o.en||"");
-      latestOut.classList.add("show");inText.textContent=o.ja||text;outText.textContent=o.en||"";outRomaji.textContent=o.romaji||"";
-    }else{
-      o=await aiJSON(ctxBlock()+'Translate this '+LANG[src].name+' into Japanese. '+nativeJa()+'\n'
-        +'Also give the Japanese in hiragana only (no kanji, no katakana; convert katakana words to hiragana), and Hepburn romaji.\n'
-        +'JSON: {"ja":"...","kana":"hiragana only","romaji":"Latin letters only"}\nText: '+text,300,"gpt-4o");
-      if(!o||!o.ja)throw new Error("empty");
-      mutateKeep(histList,()=>{
-        el.querySelector(".dst").textContent=o.ja;
-        el.querySelector(".ro").textContent=o.romaji||"";
-        kana.textContent=o.kana?"かな: "+o.kana:"";
-        // order: Japanese translation → kana → romaji → typed text
-        const w=el.querySelector(".who"),sr=el.querySelector(".src"),ds=el.querySelector(".dst"),ro=el.querySelector(".ro");
-        el.append(w,ds,kana,ro,sr,note);
-      });
-      pushCtx(src,text,"ja",o.ja);
-      latestOut.classList.add("show");inText.textContent=text;outText.textContent=o.ja;outRomaji.textContent=o.romaji||"";
-      if(autoSpeak)speak(o.ja,"ja");
-    }
-    // tap the entry to hear the Japanese
-    const jaText=src==="ja"?(o.ja||text):o.ja;
-    el.style.cursor="pointer";el.title="tap to hear";el.onclick=()=>speak(jaText,"ja");
+      }else{ // Japanese translation first, romaji, kana, then your original
+        ds.textContent=o.ja;sr.textContent=text;
+        el.append(w,ds,ro,kana,sr,note);
+      }
+    });
+    pushCtx(jaIn?"ja":(o.input==="he"?"he":"en"),jaIn?o.ja:text,jaIn?"en":"ja",jaIn?(o.en||""):o.ja);
+    latestOut.classList.add("show");
+    if(jaIn){outText.textContent=o.en||"";outRomaji.textContent=o.romaji||"";inText.textContent=o.ja;}
+    else{outText.textContent=o.ja;outRomaji.textContent=o.romaji||"";inText.textContent=text;if(autoSpeak)speak(o.ja,"ja");}
+    el.style.cursor="pointer";el.title="tap to hear";el.onclick=()=>speak(o.ja,"ja");
   }catch(e){mutateKeep(histList,()=>{el.querySelector(".dst").textContent="(failed)";});showErr("Translation error — "+(e.message||""));}
 }
 
