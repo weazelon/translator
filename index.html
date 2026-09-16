@@ -155,7 +155,7 @@
 
 <div class="app">
   <header>
-    <h1>Live Translator<small>v48</small></h1>
+    <h1>Live Translator<small>v49</small></h1>
     <div class="status" id="status">Ready</div>
     <button class="iconBtn" id="listenBtn" title="Listening settings">🎧</button>
     <button class="iconBtn" id="settingsBtn" title="Settings">⚙️</button>
@@ -215,6 +215,12 @@
     <div class="field"><div class="label">AI models</div>
       <select id="modelGen"><option value="new" selected>GPT-5.6 Luna + Terra (newest, recommended)</option><option value="classic">Classic gpt-4o-mini + gpt-4o (fallback)</option></select>
       <div class="hint">If translations ever fail after an OpenAI change, switch to Classic.</div></div>
+    <div class="field"><div class="label">Speech recognition (ears)</div>
+      <select id="sttSel"><option value="gpt-4o-mini-transcribe">gpt-4o-mini-transcribe (proven)</option><option value="gpt-transcribe">gpt-transcribe (newest)</option><option value="gpt-4o-transcribe">gpt-4o-transcribe (most accurate, slower)</option></select></div>
+    <div class="field"><div class="label">Japanese voice (text-to-speech)</div>
+      <select id="voiceSel"><option value="">Auto (best available)</option></select>
+      <div class="hint">Google / "Natural" / network voices sound best. Tap 🔊 to preview.</div>
+      <button class="side" id="voiceTest" style="margin-top:6px">🔊 Preview voice</button></div>
     <div class="field"><div class="label">OpenAI API key</div><input type="password" id="oaiKey" placeholder="sk-..."><div class="hint">Stored on this device only.</div></div>
     <div class="field"><div class="label">Budget</div>
       <div style="display:flex;gap:8px;align-items:center;margin-top:6px"><span>$</span><input type="number" id="budgetUsd" value="5" min="1" step="1" style="width:90px;margin:0"><span class="hint" id="usageLine" style="flex:1"></span><button class="side" id="usageReset">Reset</button></div></div>
@@ -288,9 +294,11 @@ const key=()=>$("oaiKey").value.trim();
 function keyCheck(){if(!key()){showErr("No API key set. Open ⚙️ Settings and paste your OpenAI key.");return false;}return true;}
 
 const MODELS={
-  new:    {fast:"gpt-5.6-luna", quality:"gpt-5.6-terra", stt:"gpt-transcribe", sttMin:0.0045},
-  classic:{fast:"gpt-4o-mini",  quality:"gpt-4o",        stt:"gpt-4o-mini-transcribe", sttMin:0.003}
+  new:    {fast:"gpt-5.6-luna", quality:"gpt-5.6-terra"},
+  classic:{fast:"gpt-4o-mini",  quality:"gpt-4o"}
 };
+const STT_PRICE={"gpt-4o-mini-transcribe":0.003,"gpt-transcribe":0.0045,"gpt-4o-transcribe":0.006};
+let sttModel=localStorage.getItem("lt_stt")||"gpt-4o-mini-transcribe";
 const PRICE_TABLE={ // $ per token
   "gpt-5.6-luna":{i:0.20/1e6,o:1.20/1e6},"gpt-5.6-terra":{i:2/1e6,o:12/1e6},"gpt-5.6-sol":{i:4/1e6,o:20/1e6},"gpt-6-astra":{i:10/1e6,o:50/1e6},
   "gpt-4o-mini":{i:0.15/1e6,o:0.60/1e6},"gpt-4o":{i:2.5/1e6,o:10/1e6}
@@ -313,6 +321,7 @@ const savedBudget=localStorage.getItem("lt_budget");if(savedBudget)$("budgetUsd"
 $("budgetUsd").addEventListener("change",()=>{localStorage.setItem("lt_budget",$("budgetUsd").value);warned80=warned95=false;updateUsageLine();});
 updateUsageLine();
 
+$("sttSel").value=sttModel;$("sttSel").onchange=()=>{sttModel=$("sttSel").value;localStorage.setItem("lt_stt",sttModel);};
 $("modelGen").value=modelGen;
 $("modelGen").onchange=()=>{modelGen=$("modelGen").value;localStorage.setItem("lt_models",modelGen);popup("net","MODELS","Now using "+M().fast+" / "+M().quality);};
 function priceOf(model,usage){const p=PRICE_TABLE[model]||PRICE_TABLE["gpt-4o-mini"];return (usage.prompt_tokens||0)*p.i+(usage.completion_tokens||0)*p.o;}
@@ -429,8 +438,8 @@ async function aiJSON(content,maxTokens,model){try{return JSON.parse(stripFences
 async function translate(text,src,dst,onDelta){
   const toJa=dst==="ja";
   const prompt=ctxBlock()+"Translate this "+LANG[src].name+" speech into "+LANG[dst].name+". "+(toJa?nativeJa()+" ":"Natural, conversational "+LANG[dst].name+" as a native would say it. ")+"Reply with the translation ONLY, in "+LANG[dst].name+(dst==="en"?" (no Japanese characters)":"")+".\n"+text;
-  const out=await aiStream(prompt, toJa?200:150, toJa?"gpt-4o":"gpt-4o-mini", onDelta);
-  if(dst==="en"&&JA_RE.test(out))return await ai("Translate to natural English. English only:\n"+text,150);
+  const out=await aiStream(prompt, toJa?200:160, "quality", onDelta);
+  if(dst==="en"&&JA_RE.test(out))return await ai("Translate to natural English. English only:\n"+text,150,"quality");
   return out;
 }
 async function romaji(ja){const r=await ai("Hepburn romaji of this Japanese, Latin letters only, nothing else:\n"+ja,120);return JA_RE.test(r)?"":r;}
@@ -496,13 +505,35 @@ function addSuggestionSet(replies,forText,dir,kind){
 /* ================= TTS ================= */
 let autoSpeak=false;
 autoSpeakBtn.onclick=()=>{autoSpeak=!autoSpeak;autoSpeakBtn.textContent="🔊 Auto-speak: "+(autoSpeak?"ON":"OFF");autoSpeakBtn.classList.toggle("on",autoSpeak);};
+let chosenVoice=localStorage.getItem("lt_voice")||"";
+function rankVoice(v){ // higher = better
+  const n=(v.name||"").toLowerCase();let sc=0;
+  if(/google/.test(n))sc+=40; if(/natural|neural|premium|enhanced|wavenet|online/.test(n))sc+=30;
+  if(!v.localService)sc+=15; if(/nanami|ayumi|keita|kyoko|o-ren|otoya|hattori/.test(n))sc+=10; if(/espeak|compact|android speech/.test(n))sc-=30;
+  return sc;
+}
+function bestVoice(lang){
+  const vs=speechSynthesis.getVoices().filter(v=>(v.lang||"").toLowerCase().startsWith(lang));
+  if(!vs.length)return null;
+  if(lang==="ja"&&chosenVoice){const c=vs.find(v=>v.name===chosenVoice);if(c)return c;}
+  return vs.sort((a,b)=>rankVoice(b)-rankVoice(a))[0];
+}
 function speak(text,lang){
   if(!window.speechSynthesis||!text)return;
-  const u=new SpeechSynthesisUtterance(text);u.lang=LANG[lang].bcp;
-  const vs=speechSynthesis.getVoices();const v=vs.find(v=>v.lang.startsWith(lang));if(v)u.voice=v;
+  speechSynthesis.cancel();
+  const u=new SpeechSynthesisUtterance(text);u.lang=LANG[lang].bcp;u.rate=0.95;
+  const v=bestVoice(lang);if(v)u.voice=v;
   speechSynthesis.speak(u);
 }
-if(window.speechSynthesis)speechSynthesis.getVoices();
+function fillVoices(){
+  const sel=$("voiceSel");if(!sel||!window.speechSynthesis)return;
+  const vs=speechSynthesis.getVoices().filter(v=>(v.lang||"").toLowerCase().startsWith("ja")).sort((a,b)=>rankVoice(b)-rankVoice(a));
+  sel.innerHTML='<option value="">Auto (best available)</option>'+vs.map(v=>'<option value="'+esc(v.name)+'">'+esc(v.name)+(v.localService?"":" · network")+'</option>').join("");
+  sel.value=chosenVoice;
+}
+if(window.speechSynthesis){speechSynthesis.getVoices();speechSynthesis.onvoiceschanged=fillVoices;setTimeout(fillVoices,500);}
+$("voiceSel").onchange=()=>{chosenVoice=$("voiceSel").value;localStorage.setItem("lt_voice",chosenVoice);};
+$("voiceTest").onclick=()=>speak("こんにちは、マアヤンです。よろしくお願いします。","ja");
 
 /* ================= pair selectors ================= */
 function ensureDifferent(changed){if(srcSel.value===dstSel.value){const other=["en","ja","he"].find(l=>l!==srcSel.value);(changed==="src"?dstSel:srcSel).value=other;}}
@@ -606,12 +637,12 @@ function wavBlob(chunks,sr){
 }
 const JUNK=["thank you","thanks for watching","ご視聴ありがとうございました","字幕","subtitles","subscribe"];
 async function transcribe(blob,lang){
-  const fd=new FormData();fd.append("file",blob,"seg.wav");fd.append("model",M().stt);
+  const fd=new FormData();fd.append("file",blob,"seg.wav");fd.append("model",sttModel);
   if(lang)fd.append("language",lang);
   fd.append("prompt",listenPrompt());
   const wr=await fetch("https://api.openai.com/v1/audio/transcriptions",{method:"POST",headers:{"Authorization":"Bearer "+key()},body:fd});
   if(!wr.ok){const t=await wr.text().catch(()=>"");throw new Error("API "+wr.status+(t?": "+t.slice(0,120):""));}
-  addSpend(((blob.size-44)/(TARGET_SR*2))/60*M().sttMin);
+  addSpend(((blob.size-44)/(TARGET_SR*2))/60*(STT_PRICE[sttModel]||0.003));
   return ((await wr.json()).text||"").trim();
 }
 async function processSegment(blob,fSrc,fDst){
