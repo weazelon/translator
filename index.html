@@ -155,7 +155,7 @@
 
 <div class="app">
   <header>
-    <h1>Live Translator<small>v49</small></h1>
+    <h1>Live Translator<small>v50</small></h1>
     <div class="status" id="status">Ready</div>
     <button class="iconBtn" id="listenBtn" title="Listening settings">🎧</button>
     <button class="iconBtn" id="settingsBtn" title="Settings">⚙️</button>
@@ -487,6 +487,8 @@ function pushTurn(cls,srcText,dstText,ro,srcLangCode){
   const src='<div class="src">'+esc(srcText)+'</div>', dst='<div class="dst">'+esc(dstText)+'</div>', roEl='<div class="ro">'+esc(ro||"")+'</div>';
   // translation first; romaji always directly under the Japanese line
   d.innerHTML = srcLangCode==="ja" ? who+dst+src+roEl : who+dst+roEl+src;
+  d.style.cursor="pointer";d.title="tap to hear the Japanese";
+  d.onclick=()=>{const cand=[d.querySelector(".src"),d.querySelector(".dst")].map(x=>x&&x.textContent||"");const ja=cand.find(t=>JA_RE.test(t));if(ja)speak(ja,"ja");};
   mutateKeep(histList,()=>histList.prepend(d),true);return d;
 }
 function addSuggestionSet(replies,forText,dir,kind){
@@ -534,6 +536,8 @@ function fillVoices(){
 if(window.speechSynthesis){speechSynthesis.getVoices();speechSynthesis.onvoiceschanged=fillVoices;setTimeout(fillVoices,500);}
 $("voiceSel").onchange=()=>{chosenVoice=$("voiceSel").value;localStorage.setItem("lt_voice",chosenVoice);};
 $("voiceTest").onclick=()=>speak("こんにちは、マアヤンです。よろしくお願いします。","ja");
+$("latestOut").style.cursor="pointer";
+$("latestOut").onclick=()=>{const ja=[outText.textContent,inText.textContent].find(t=>JA_RE.test(t||""));if(ja)speak(ja,"ja");};
 
 /* ================= pair selectors ================= */
 function ensureDifferent(changed){if(srcSel.value===dstSel.value){const other=["en","ja","he"].find(l=>l!==srcSel.value);(changed==="src"?dstSel:srcSel).value=other;}}
