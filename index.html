@@ -125,7 +125,10 @@
   .bub .sub{display:block;font-size:.95rem;font-weight:600;opacity:.85;margin-top:4px}
   .bub .ro{display:block;font-size:1rem;color:var(--ro);font-style:italic;font-weight:700;margin-top:2px}
   .bub .back{display:block;font-size:.85rem;font-weight:600;opacity:.85;margin-top:6px;border-top:1px dashed rgba(255,255,255,.3);padding-top:5px}
-  .bub .play{position:absolute;top:8px;inset-inline-end:8px;width:22px;height:22px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:.6rem}
+  .bub .play{position:absolute;top:8px;inset-inline-end:8px;width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:.6rem}
+  .bub .playEn{position:absolute;top:8px;inset-inline-end:38px;height:24px;padding:0 7px;border-radius:999px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:.62rem;font-weight:900;letter-spacing:.03em}
+  .turn .spk{display:inline-flex;gap:6px;margin-top:4px}
+  .turn .spk button{border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:999px;font-size:.68rem;font-weight:900;padding:2px 8px;cursor:pointer}
   .bub.old{opacity:.5;font-size:1.05rem;filter:saturate(.6)}
   @keyframes pop{from{transform:scale(.85) translateY(8px);opacity:0}to{transform:none;opacity:1}}
   .cardBar{flex:none;display:flex;align-items:center;gap:10px;padding-top:8px}
@@ -236,7 +239,7 @@
 
 <div class="app">
   <header>
-    <h1>Live Translator<small>v54</small></h1>
+    <h1>Live Translator<small>v55</small></h1>
     <div class="status" id="status">Ready</div>
     <button class="iconBtn" id="listenBtn" title="Listening settings">🎧</button>
     <button class="iconBtn" id="settingsBtn" title="Settings">⚙️</button>
@@ -305,7 +308,9 @@
     <div class="field"><div class="label">Voice engine</div>
       <select id="ttsEngine"><option value="openai">OpenAI voice (best quality, uses API)</option><option value="device">Phone's built-in voice (free)</option></select>
       <div class="hint">OpenAI voice ≈ $0.015 per minute of speech.</div>
-      <select id="oaiVoice" style="margin-top:6px"><option value="nova">Nova (warm, female)</option><option value="shimmer">Shimmer (soft, female)</option><option value="coral">Coral (bright, female)</option><option value="alloy">Alloy (neutral)</option><option value="echo">Echo (male)</option><option value="onyx">Onyx (deep male)</option><option value="ash">Ash (calm male)</option></select></div>
+      <select id="oaiVoice" style="margin-top:6px"><option value="marin">Marin (most natural, female)</option><option value="cedar">Cedar (most natural, male)</option><option value="nova">Nova (warm, female)</option><option value="shimmer">Shimmer (soft, female)</option><option value="coral">Coral (bright, female)</option><option value="sage">Sage (gentle)</option><option value="ash">Ash (calm male)</option><option value="echo">Echo (male)</option><option value="onyx">Onyx (deep male)</option></select>
+      <select id="ttsStyle" style="margin-top:6px"><option value="friendly">Style: friendly & relaxed</option><option value="casual">Style: casual, like a friend at a bar</option><option value="polite">Style: polite & clear (shops, staff)</option><option value="energetic">Style: upbeat & expressive</option><option value="calm">Style: calm & slow (learning)</option></select>
+      <button class="side" id="voiceTestOai" style="margin-top:6px">🔊 Preview OpenAI voice</button></div>
     <div class="field"><div class="label">Japanese voice (phone's built-in)</div>
       <select id="voiceSel"><option value="">Auto (best available)</option></select>
       <div class="hint">Google / "Natural" / network voices sound best. Tap 🔊 to preview.</div>
@@ -603,7 +608,11 @@ function pushTurn(cls,srcText,dstText,ro,srcLangCode){
   // translation first; romaji always directly under the Japanese line
   d.innerHTML = srcLangCode==="ja" ? who+dst+src+roEl : who+dst+roEl+src;
   d.style.cursor="pointer";d.title="tap to hear the Japanese";
-  d.onclick=()=>{const cand=[d.querySelector(".src"),d.querySelector(".dst")].map(x=>x&&x.textContent||"");const ja=cand.find(t=>JA_RE.test(t));if(ja)speak(ja,"ja");};
+  const cand=()=>[d.querySelector(".src"),d.querySelector(".dst")].map(x=>x&&x.textContent||"");
+  d.onclick=()=>{const ja=cand().find(t=>JA_RE.test(t));if(ja)speak(ja,"ja");};
+  const spk=document.createElement("div");spk.className="spk";spk.innerHTML='<button data-l="ja">▶ 日本語</button><button data-l="en">▶ EN</button>';
+  spk.querySelectorAll("button").forEach(bt=>bt.onclick=ev=>{ev.stopPropagation();const l=bt.dataset.l;const txt=cand().find(t=>l==="ja"?JA_RE.test(t):(t&&!JA_RE.test(t)&&!HE_RE.test(t)));if(txt)speak(txt,l);});
+  d.appendChild(spk);
   d._rec={cls,who:"🗣 "+(LANG[srcLangCode]?LANG[srcLangCode].label:srcLangCode),src:srcText,dst:dstText,ro:ro||"",srcLang:srcLangCode};logAdd(d._rec);
   mutateKeep(histList,()=>histList.prepend(d),true);return d;
 }
@@ -636,7 +645,14 @@ function bestVoice(lang){
   if(lang==="ja"&&chosenVoice){const c=vs.find(v=>v.name===chosenVoice);if(c)return c;}
   return vs.sort((a,b)=>rankVoice(b)-rankVoice(a))[0];
 }
-let ttsEngine=localStorage.getItem("lt_tts")||"openai",oaiVoice=localStorage.getItem("lt_oaivoice")||"nova";
+let ttsEngine=localStorage.getItem("lt_tts")||"openai",oaiVoice=localStorage.getItem("lt_oaivoice")||"marin",ttsStyle=localStorage.getItem("lt_ttsstyle")||"friendly";
+const STYLE_INSTR={
+  friendly:"Voice: warm, friendly, relaxed. Sound like a real person chatting, not reading. Natural rhythm with small pauses, light intonation changes, never flat or robotic.",
+  casual:"Voice: casual and laid-back, like a friend talking at a bar. Loose, natural, a little playful, with easy intonation and natural pauses.",
+  polite:"Voice: polite, clear and pleasant, like friendly shop staff. Natural pace, gentle intonation, articulate but not stiff.",
+  energetic:"Voice: upbeat, expressive and lively, with clear emotional intonation. Energetic but still natural.",
+  calm:"Voice: calm, gentle and slightly slower than normal, articulate, for a language learner following along. Natural, not monotone."
+};
 const ttsCache=new Map();let curAudio=null;
 function speakDevice(text,lang){
   if(!window.speechSynthesis)return;
@@ -646,14 +662,14 @@ function speakDevice(text,lang){
   speechSynthesis.speak(u);
 }
 async function speakOpenAI(text,lang){
-  const k=lang+"|"+oaiVoice+"|"+text;
+  const k=lang+"|"+oaiVoice+"|"+ttsStyle+"|"+text;
   if(curAudio){try{curAudio.pause();}catch(e){}curAudio=null;}
   if(window.speechSynthesis)speechSynthesis.cancel();
   let url=ttsCache.get(k);
   if(!url){
     const tryModel=async(model)=>{
       const body={model,voice:oaiVoice,input:text,response_format:"mp3"};
-      if(model==="gpt-4o-mini-tts")body.instructions=lang==="ja"?"Speak natural, clear Japanese like a native speaker, at a relaxed conversational pace.":"Speak naturally and clearly at a conversational pace.";
+      if(model==="gpt-4o-mini-tts")body.instructions=(lang==="ja"?"Language: natural native Japanese with correct pitch accent. ":lang==="he"?"Language: natural native Hebrew. ":"Language: natural native English. ")+STYLE_INSTR[ttsStyle];
       const r=await fetch("https://api.openai.com/v1/audio/speech",{method:"POST",headers:{"Content-Type":"application/json","Authorization":"Bearer "+key()},body:JSON.stringify(body)});
       if(!r.ok){const t=await r.text().catch(()=>"");throw new Error("API "+r.status+(t?": "+t.slice(0,120):""));}
       return URL.createObjectURL(await r.blob());
@@ -671,6 +687,8 @@ function speak(text,lang){
 }
 $("ttsEngine").value=ttsEngine;$("ttsEngine").onchange=()=>{ttsEngine=$("ttsEngine").value;localStorage.setItem("lt_tts",ttsEngine);};
 $("oaiVoice").value=oaiVoice;$("oaiVoice").onchange=()=>{oaiVoice=$("oaiVoice").value;localStorage.setItem("lt_oaivoice",oaiVoice);};
+$("ttsStyle").value=ttsStyle;$("ttsStyle").onchange=()=>{ttsStyle=$("ttsStyle").value;localStorage.setItem("lt_ttsstyle",ttsStyle);};
+$("voiceTestOai").onclick=()=>{const prev=ttsEngine;ttsEngine="openai";speak("こんにちは、マアヤンです。今日はよろしくね。","ja");ttsEngine=prev;};
 function fillVoices(){
   const sel=$("voiceSel");if(!sel||!window.speechSynthesis)return;
   const vs=speechSynthesis.getVoices().filter(v=>(v.lang||"").toLowerCase().startsWith("ja")).sort((a,b)=>rankVoice(b)-rankVoice(a));
@@ -931,15 +949,17 @@ function f2fShow(segSrc,text,dst,ro,el){
   for(const m of [msgsTop,msgsBottom])m.querySelectorAll(".bub").forEach(x=>x.classList.add("old"));
   const b=document.createElement("div");b.className="bub "+(mine?"me":"them");
   b.innerHTML=(mine?('<span>'+esc(text)+'</span><span class="sub" data-f="dst">'+esc(dst)+'</span><span class="ro" data-f="ro">'+esc(ro)+'</span>')
-                   :('<span data-f="dst">'+esc(dst)+'</span><span class="sub">'+esc(text)+'</span><span class="ro" data-f="ro">'+esc(ro)+'</span>'))+'<span class="play">▶</span>';
+                   :('<span data-f="dst">'+esc(dst)+'</span><span class="sub">'+esc(text)+'</span><span class="ro" data-f="ro">'+esc(ro)+'</span>'))+'<span class="playEn">EN</span><span class="play">▶</span>';
   msgsBottom.appendChild(b);msgsBottom.scrollTop=msgsBottom.scrollHeight;
   const t=document.createElement("div");t.className="bub "+(mine?"them":"me");
   t.innerHTML=(mine?('<span data-f="dst">'+esc(dst)+'</span><span class="sub">'+esc(text)+'</span><span class="ro" data-f="ro">'+esc(ro)+'</span>')
-                   :('<span>'+esc(text)+'</span><span class="sub" data-f="dst">'+esc(dst)+'</span><span class="ro" data-f="ro">'+esc(ro)+'</span>'))+'<span class="play">▶</span>';
+                   :('<span>'+esc(text)+'</span><span class="sub" data-f="dst">'+esc(dst)+'</span><span class="ro" data-f="ro">'+esc(ro)+'</span>'))+'<span class="playEn">EN</span><span class="play">▶</span>';
   msgsTop.appendChild(t);msgsTop.scrollTop=msgsTop.scrollHeight;
   el._f2f=[b,t];el._seg={src:segSrc,text};
   // tap: play the Japanese; on your side also show a back-translation check
   const playJa=()=>{const ja=[el._seg.dst,el._seg.text].find(x=>JA_RE.test(x||""));if(ja)speak(ja,"ja");};
+  const playEn=()=>{const en=[el._seg.dst,el._seg.text].find(x=>x&&!JA_RE.test(x)&&!HE_RE.test(x));if(en)speak(en,"en");};
+  for(const node of [b,t]){const pe=node.querySelector(".playEn");if(pe)pe.onclick=ev=>{ev.stopPropagation();playEn();};}
   t.onclick=playJa;
   b.onclick=async()=>{playJa();if(mine&&el._seg.dst&&!b.querySelector(".back")){const bk=document.createElement("span");bk.className="back";bk.textContent="checking…";b.appendChild(bk);try{bk.textContent="↩ they hear: "+await ai("Translate this Japanese back into natural English so I can verify it. English only:\n"+el._seg.dst,120,"fast");}catch(e){bk.remove();}}};
   f2fStatus.textContent=f2fAutoMode?"Auto · both languages are heard":"Hold a mic to talk · tap a bubble to hear it";
