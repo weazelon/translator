@@ -126,10 +126,9 @@
   .bub .sub{display:block;font-size:.95rem;font-weight:600;opacity:.85;margin-top:4px}
   .bub .ro{display:block;font-size:1rem;color:var(--ro);font-style:italic;font-weight:700;margin-top:2px}
   .bub .back{display:block;font-size:.85rem;font-weight:600;opacity:.85;margin-top:6px;border-top:1px dashed rgba(255,255,255,.3);padding-top:5px}
-  .bub .play{position:absolute;top:8px;inset-inline-end:8px;width:24px;height:24px;border-radius:50%;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:.6rem}
-  .bub .playEn{position:absolute;top:8px;inset-inline-end:38px;height:24px;padding:0 7px;border-radius:999px;background:rgba(255,255,255,.2);display:flex;align-items:center;justify-content:center;font-size:.62rem;font-weight:900;letter-spacing:.03em}
-  .turn .spk{display:inline-flex;gap:6px;margin-top:4px}
-  .turn .spk button{border:1px solid var(--line);background:var(--panel);color:var(--muted);border-radius:999px;font-size:.68rem;font-weight:900;padding:2px 8px;cursor:pointer}
+  .bub .spkI{opacity:.85;color:inherit;font-size:.8em}
+  .spkI{border:none;background:transparent;font-size:.85em;margin-inline-start:8px;cursor:pointer;opacity:.7;vertical-align:middle;padding:0 2px}
+  .spkI:active{transform:scale(.85)}
   .bub.old{opacity:.5;font-size:1.05rem;filter:saturate(.6)}
   @keyframes pop{from{transform:scale(.85) translateY(8px);opacity:0}to{transform:none;opacity:1}}
   .cardBar{flex:none;display:flex;align-items:center;gap:10px;padding-top:8px}
@@ -240,7 +239,7 @@
 
 <div class="app">
   <header>
-    <h1>Live Translator<small>v56</small></h1>
+    <h1>Live Translator<small>v57</small></h1>
     <div class="status" id="status">Ready</div>
     <button class="iconBtn" id="listenBtn" title="Listening settings">🎧</button>
     <button class="iconBtn" id="settingsBtn" title="Settings">⚙️</button>
@@ -598,9 +597,19 @@ function renderTurn(r){
   if(r.kana){const k=document.createElement("div");k.className="kana";k.textContent="かな: "+r.kana;d.appendChild(k);}
   if(r.note){const n=document.createElement("div");n.className="note";n.textContent=r.note;d.appendChild(n);}
   d.style.cursor="pointer";d.onclick=()=>{const ja=[r.src,r.dst].find(t=>JA_RE.test(t||""));if(ja)speak(ja,"ja");};
+  attachInlineSpeakers(d);
   return d;
 }
 $("histClear").onclick=()=>{if(!confirm("Clear the whole conversation history?"))return;LOG=[];logSave();histList.innerHTML='<div class="empty" id="histEmpty"><div style="font-size:2rem">🗣</div><div>Tap <b>Simultaneous</b> and just talk — both languages are heard.<br>Or type below.</div></div>';};
+function attachInlineSpeakers(d){
+  // a small speaker at the end of the Japanese line and of the English/Hebrew line, whichever element holds them
+  for(const el of [d.querySelector(".src"),d.querySelector(".dst")]){
+    if(!el||el.querySelector(".spkI"))continue;
+    const b=document.createElement("button");b.className="spkI";b.textContent="🔊";b.title="play";
+    b.onclick=ev=>{ev.stopPropagation();const t=el.textContent.replace("🔊","").trim();if(!t||t==="…")return;speak(t,JA_RE.test(t)?"ja":HE_RE.test(t)?"he":"en");};
+    el.appendChild(b);
+  }
+}
 function pushTurn(cls,srcText,dstText,ro,srcLangCode){
   const em=$("histEmpty");if(em)em.remove();
   const d=document.createElement("div");d.className="turn "+cls;
@@ -611,9 +620,7 @@ function pushTurn(cls,srcText,dstText,ro,srcLangCode){
   d.style.cursor="pointer";d.title="tap to hear the Japanese";
   const cand=()=>[d.querySelector(".src"),d.querySelector(".dst")].map(x=>x&&x.textContent||"");
   d.onclick=()=>{const ja=cand().find(t=>JA_RE.test(t));if(ja)speak(ja,"ja");};
-  const spk=document.createElement("div");spk.className="spk";spk.innerHTML='<button data-l="ja">▶ 日本語</button><button data-l="en">▶ EN</button>';
-  spk.querySelectorAll("button").forEach(bt=>bt.onclick=ev=>{ev.stopPropagation();const l=bt.dataset.l;const txt=cand().find(t=>l==="ja"?JA_RE.test(t):(t&&!JA_RE.test(t)&&!HE_RE.test(t)));if(txt)speak(txt,l);});
-  d.appendChild(spk);
+  attachInlineSpeakers(d);
   d._rec={cls,who:"🗣 "+(LANG[srcLangCode]?LANG[srcLangCode].label:srcLangCode),src:srcText,dst:dstText,ro:ro||"",srcLang:srcLangCode};logAdd(d._rec);
   mutateKeep(histList,()=>histList.prepend(d),true);return d;
 }
@@ -654,18 +661,18 @@ const STYLE_INSTR={
   energetic:"Voice: upbeat, expressive and lively, with clear emotional intonation. Energetic but still natural.",
   calm:"Voice: calm, gentle and slightly slower than normal, articulate, for a language learner following along. Natural, not monotone."
 };
-const ttsCache=new Map();let curAudio=null;
+const ttsCache=new Map();let curAudio=null,playToken=0;
+function stopSpeech(){playToken++;if(curAudio){try{curAudio.pause();curAudio.currentTime=0;}catch(e){}curAudio=null;}if(window.speechSynthesis)speechSynthesis.cancel();}
 function speakDevice(text,lang){
   if(!window.speechSynthesis)return;
-  speechSynthesis.cancel();
+  stopSpeech();
   const u=new SpeechSynthesisUtterance(text);u.lang=LANG[lang].bcp;u.rate=0.95;
   const v=bestVoice(lang);if(v)u.voice=v;
   speechSynthesis.speak(u);
 }
 async function speakOpenAI(text,lang){
   const k=lang+"|"+oaiVoice+"|"+ttsStyle+"|"+text;
-  if(curAudio){try{curAudio.pause();}catch(e){}curAudio=null;}
-  if(window.speechSynthesis)speechSynthesis.cancel();
+  stopSpeech();const my=playToken;
   let url=ttsCache.get(k);
   if(!url){
     const tryModel=async(model)=>{
@@ -679,6 +686,7 @@ async function speakOpenAI(text,lang){
     ttsCache.set(k,url);if(ttsCache.size>60){const first=ttsCache.keys().next().value;URL.revokeObjectURL(ttsCache.get(first));ttsCache.delete(first);}
     addSpend(text.length/1000*0.012); // rough: ~$0.015/min
   }
+  if(my!==playToken)return; // a newer tap superseded this one
   curAudio=new Audio(url);curAudio.play().catch(()=>{});
 }
 function speak(text,lang){
@@ -838,6 +846,7 @@ async function handleUtterance(text,fSrc,fDst,el){
       el.querySelector(".src").textContent=text;
       const w=el.querySelector(".who"),sr=el.querySelector(".src"),ro=el.querySelector(".ro"),ds=el.querySelector(".dst");
       if(segSrc==="ja") el.append(w,ds,sr,ro); else el.append(w,ds,ro,sr);
+      attachInlineSpeakers(el);
     });
     // PARALLEL: translation, romaji (of the Japanese side), suggestions (if Japanese was spoken)
     const jaInput=segSrc==="ja";
@@ -846,7 +855,7 @@ async function handleUtterance(text,fSrc,fDst,el){
     const pRo=jaInput?romaji(text):pTrans.then(t=>romaji(t));
     const meaningL=(segSrc==="he"||segDst==="he")?"Hebrew":"English";
     const pSug=jaInput?suggestions(text,meaningL):pTrans.then(t=>followups(text,segSrc,t,meaningL));
-    pTrans.then(t=>{mutateKeep(histList,()=>{el.querySelector(".dst").textContent=t;});logUpdate(el,{dst:t});f2fUpdate(el,{dst:t});pushCtx(segSrc,text,segDst,t);if(autoSpeak)speak(t,segDst);}).catch(e=>{el.querySelector(".dst").textContent="(translation failed)";showErr("Translation error — "+(e.message||""));});
+    pTrans.then(t=>{mutateKeep(histList,()=>{el.querySelector(".dst").textContent=t;attachInlineSpeakers(el);});logUpdate(el,{dst:t});f2fUpdate(el,{dst:t});pushCtx(segSrc,text,segDst,t);if(autoSpeak)speak(t,segDst);}).catch(e=>{el.querySelector(".dst").textContent="(translation failed)";showErr("Translation error — "+(e.message||""));});
     pRo.then(r=>{mutateKeep(histList,()=>{el.querySelector(".ro").textContent=r||"";});outRomaji.textContent=r||"";logUpdate(el,{ro:r||""});f2fUpdate(el,{ro:r||""});}).catch(()=>{});
     const meaningLang=(segSrc==="he"||segDst==="he")?"Hebrew":"English";
     pSug.then(reps=>addSuggestionSet(reps,text,meaningLang==="Hebrew"?"rtl":"ltr",jaInput?"reply":"follow")).catch(()=>{});
@@ -889,6 +898,7 @@ async function typedGo(){
         ds.textContent=o.ja;sr.textContent=text;
         el.append(w,ds,ro,kana,sr,note);
       }
+      attachInlineSpeakers(el);
     });
     pushCtx(jaIn?"ja":(o.input==="he"?"he":"en"),jaIn?o.ja:text,jaIn?"en":"ja",jaIn?(o.en||""):o.ja);
     logUpdate(el,{cls:jaIn?"b":"a",who:el.querySelector(".who").textContent,src:jaIn?o.ja:text,dst:jaIn?(o.en||""):o.ja,ro:o.romaji||"",kana:o.kana||"",note:note.textContent,srcLang:jaIn?"ja":"en"});
@@ -949,18 +959,18 @@ function f2fShow(segSrc,text,dst,ro,el){
   const mine=segSrc!=="ja";
   for(const m of [msgsTop,msgsBottom])m.querySelectorAll(".bub").forEach(x=>x.classList.add("old"));
   const b=document.createElement("div");b.className="bub "+(mine?"me":"them");
-  b.innerHTML=(mine?('<span>'+esc(text)+'</span><span class="sub" data-f="dst">'+esc(dst)+'</span><span class="ro" data-f="ro">'+esc(ro)+'</span>')
-                   :('<span data-f="dst">'+esc(dst)+'</span><span class="sub">'+esc(text)+'</span><span class="ro" data-f="ro">'+esc(ro)+'</span>'))+'<span class="playEn">EN</span><span class="play">▶</span>';
+  b.innerHTML=(mine?('<span class="ln" data-l="en">'+esc(text)+'</span><span class="sub ln" data-l="ja" data-f="dst">'+esc(dst)+'</span><span class="ro" data-f="ro">'+esc(ro)+'</span>')
+                   :('<span class="ln" data-l="en" data-f="dst">'+esc(dst)+'</span><span class="sub ln" data-l="ja">'+esc(text)+'</span><span class="ro" data-f="ro">'+esc(ro)+'</span>'));
   msgsBottom.appendChild(b);msgsBottom.scrollTop=msgsBottom.scrollHeight;
   const t=document.createElement("div");t.className="bub "+(mine?"them":"me");
-  t.innerHTML=(mine?('<span data-f="dst">'+esc(dst)+'</span><span class="sub">'+esc(text)+'</span><span class="ro" data-f="ro">'+esc(ro)+'</span>')
-                   :('<span>'+esc(text)+'</span><span class="sub" data-f="dst">'+esc(dst)+'</span><span class="ro" data-f="ro">'+esc(ro)+'</span>'))+'<span class="playEn">EN</span><span class="play">▶</span>';
+  t.innerHTML=(mine?('<span class="ln" data-l="ja" data-f="dst">'+esc(dst)+'</span><span class="sub ln" data-l="en">'+esc(text)+'</span><span class="ro" data-f="ro">'+esc(ro)+'</span>')
+                   :('<span class="ln" data-l="ja">'+esc(text)+'</span><span class="sub ln" data-l="en" data-f="dst">'+esc(dst)+'</span><span class="ro" data-f="ro">'+esc(ro)+'</span>'));
   msgsTop.appendChild(t);msgsTop.scrollTop=msgsTop.scrollHeight;
   el._f2f=[b,t];el._seg={src:segSrc,text};
   // tap: play the Japanese; on your side also show a back-translation check
   const playJa=()=>{const ja=[el._seg.dst,el._seg.text].find(x=>JA_RE.test(x||""));if(ja)speak(ja,"ja");};
-  const playEn=()=>{const en=[el._seg.dst,el._seg.text].find(x=>x&&!JA_RE.test(x)&&!HE_RE.test(x));if(en)speak(en,"en");};
-  for(const node of [b,t]){const pe=node.querySelector(".playEn");if(pe)pe.onclick=ev=>{ev.stopPropagation();playEn();};}
+  const addSpk=node=>node.querySelectorAll(".ln").forEach(ln=>{const bt=document.createElement("button");bt.className="spkI";bt.textContent="🔊";bt.onclick=ev=>{ev.stopPropagation();const tx=ln.textContent.replace("🔊","").trim();if(tx&&tx!=="…")speak(tx,ln.dataset.l);};ln.appendChild(bt);});
+  addSpk(b);addSpk(t);
   t.onclick=playJa;
   b.onclick=async()=>{playJa();if(mine&&el._seg.dst&&!b.querySelector(".back")){const bk=document.createElement("span");bk.className="back";bk.textContent="checking…";b.appendChild(bk);try{bk.textContent="↩ they hear: "+await ai("Translate this Japanese back into natural English so I can verify it. English only:\n"+el._seg.dst,120,"fast");}catch(e){bk.remove();}}};
   f2fStatus.textContent=f2fAutoMode?"Auto · both languages are heard":"Hold a mic to talk · tap a bubble to hear it";
@@ -968,7 +978,7 @@ function f2fShow(segSrc,text,dst,ro,el){
 function f2fUpdate(el,patch){
   if(!el._f2f)return;
   if(patch.dst!==undefined)el._seg.dst=patch.dst;
-  for(const node of el._f2f){for(const k in patch){const f=node.querySelector('[data-f="'+k+'"]');if(f)f.textContent=patch[k];}}
+  for(const node of el._f2f){for(const k in patch){const f=node.querySelector('[data-f="'+k+'"]');if(f){f.textContent=patch[k];if(f.classList.contains("ln")){const bt=document.createElement("button");bt.className="spkI";bt.textContent="🔊";bt.onclick=ev=>{ev.stopPropagation();const tx=f.textContent.replace("🔊","").trim();if(tx&&tx!=="…")speak(tx,f.dataset.l);};f.appendChild(bt);}}}}
   msgsTop.scrollTop=msgsTop.scrollHeight;msgsBottom.scrollTop=msgsBottom.scrollHeight;
 }
 
